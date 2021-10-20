@@ -40,7 +40,7 @@ async def on_ready():
 
 
 @bot.command(name='lp', pass_context=True)
-@commands.has_role('staff')
+@commands.has_role('Staff')
 async def lp(ctx, *, message):
     await ctx.message.delete()
     changes = "```diff\n" + message + "```"
@@ -81,7 +81,7 @@ async def bolte(ctx):
 
 
 @bot.command(name='embed', pass_context=True)
-@commands.has_role('staff')
+@commands.has_role('Staff')
 async def embed(ctx, title, description, color):
     if color == "red":
         color = discord.Color.red()
@@ -100,7 +100,28 @@ async def embed(ctx, title, description, color):
     embed.set_footer(text="Issued by " + ctx.message.author.name, icon_url=ctx.message.author.avatar_url)
     await ctx.send(embed=embed)
 
-    
+
+@bot.command(name='whitelist', pass_context=True)
+@commands.has_role('Staff')
+async def whitelist(ctx, member: discord.Member):
+    await ctx.message.delete()
+    channel = bot.get_channel(869280855657447445)
+    role = discord.utils.get(member.guild.roles, id=899568696593367070)
+    await member.add_roles(role)
+    message = "Added " + member.display_name + " to the whitelist"
+    embed = discord.Embed(title="Whitelisted", description=message, color=discord.Color.green())
+    embed.set_footer(text="Whitelisted by " + ctx.message.author.name, icon_url=ctx.message.author.avatar_url)
+    await channel.send(embed=embed)
+
+
+@bot.command(name='warn', pass_context=True)
+@commands.has_role('Staff')
+async def warn(ctx, member: discord.Member):
+    channel = bot.get_channel(869280855657447445)
+    role = discord.utils.get(member.guild.roles, id=900351762395975691)
+    await member.add_roles(role)
+
+
 bot.run('NEARLY CAUGHT ME')
 
 

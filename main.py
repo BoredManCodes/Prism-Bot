@@ -1,11 +1,12 @@
 import discord
 import discord.ext
 from discord.ext import commands
+from decouple import config
 intents = discord.Intents.default()
 intents.members = True
 bot = commands.Bot(command_prefix='$', intents=intents)
 bot.remove_command('help')
-
+toe_ken = config('TOKEN')
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -31,6 +32,19 @@ async def on_command_error(ctx, error):
         embed = discord.Embed(title="We ran into an undefined error", description=error, color=discord.Color.red())
         embed.set_footer(text="Issued by " + ctx.message.author.name, icon_url=ctx.message.author.avatar_url)
         await ctx.send(embed=embed)
+
+
+@bot.event
+async def on_member_join(ctx):
+    channel = bot.get_channel(858547359804555267)
+    title = "Welcome to Prism SMP!"
+    description = "Please look at the <#861317568807829535> when you have a minute.\n\n" \
+           "You can grab some self roles over in <#861288424640348160> . There's a <#858549386962272296>," \
+           "but you don't have to read that. Join the server at least once (the IP is in <#858549386962272296>)" \
+           " then ask in <#869280855657447445> to get yourself whitelisted."
+    embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
+    embed.set_footer(text=ctx.name, icon_url=ctx.avatar_url)
+    await channel.send(embed=embed)
 
 
 @bot.event
@@ -122,7 +136,7 @@ async def warn(ctx, member: discord.Member):
     await member.add_roles(role)
 
 
-bot.run('NEARLY CAUGHT ME')
+bot.run('toe_ken')
 
 
 

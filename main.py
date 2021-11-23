@@ -227,7 +227,7 @@ async def staff(ctx: SlashContext):
                      name="description",
                      description="The description of the embed",
                      option_type=option_type["string"],
-                     required=True
+                     required=False
                  ), create_option(
                      name="channel",
                      description="The channel to send to",
@@ -303,15 +303,20 @@ async def whitelist(ctx, member: discord.Member):
                      name="description",
                      description="The description of the embed",
                      option_type=option_type["string"],
+                     required=False
+                 ), create_option(
+                     name="silent",
+                     description="Whether to show the creator",
+                     option_type=option_type["boolean"],
                      required=True
                  )
              ])
 @commands.has_role('Staff')
-async def embed(ctx: SlashContext, *, embedlink, title, description):
+async def embed(ctx: SlashContext, *, embedlink, title, description, silent):
     #msg = await oldembed.channel.fetch_message(757114312413151272)
     newembed = discord.Embed(title=title, description=description, color=ctx.author.color)
-    # if not silent:
-    #     embed.set_footer(text="Issued by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
+    if not silent:
+        embed.set_footer(text="Issued by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
     await ctx.send("Embed edited", hidden=True)
     editembed = embedlink.split('/')
     message = await bot.get_guild(int(editembed[-3])).get_channel(int(editembed[-2])).fetch_message(int(editembed[-1]))

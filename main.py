@@ -8,7 +8,6 @@ from discord_slash.utils.manage_components import create_button, create_actionro
 from discord_slash.model import ButtonStyle
 from discord_slash.utils.manage_components import wait_for_component
 import requests
-import csv
 from numpy import genfromtxt
 
 intents = discord.Intents.default()
@@ -49,7 +48,8 @@ bot.json_file.close()
 
 @bot.event
 async def on_message(message):
-    if message.author == bot.user:
+    bored = await message.guild.fetch_member(324504908013240330)
+    if message.author == bored or bot.user:
         return
 
     links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
@@ -59,15 +59,19 @@ async def on_message(message):
         filtered_links.append(filtered_link)
     if any(keyword in message.content.lower() for keyword in filtered_links):
         await message.delete()
-        await message.channel.send(":warning: Scam detected :warning:")
+        role = discord.utils.get(message.guild.roles, name='Muted')
+        await message.author.add_roles(role)
+        warn = ":warning::mute:" + message.author.mention + " you have been muted for sending a scam link. Knock it off"
+        await message.channel.send(warn)
         modlog = bot.get_channel(897765157940396052)
-        description = message.author.display_name + " (" + str(message.author.id) + ") " "sent a scam link." + "\nLink: " + message.content + "\n" + "Be careful if you click this link"
+        description = message.author.display_name + " [" + str(message.author.id) + "] " "sent a scam link." + "\nLink: " + message.content + "\n" + ":mute: They have been muted :mute:"
         embed = discord.Embed(title="Scam Detected", description=str(description).replace(',', '').replace('(', '').replace(')', '').replace('\'', ''))
         embed.set_author(name=message.author.display_name,
                          icon_url=message.author.avatar_url)
         embed.set_thumbnail(
             url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Warning_icon.svg/1153px-Warning_icon.svg.png")
         await modlog.send(embed=embed)
+
 
 @bot.event
 async def on_message_edit(message_before, message_after):
@@ -90,6 +94,7 @@ async def on_message_edit(message_before, message_after):
         embed.set_thumbnail(
             url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Warning_icon.svg/1153px-Warning_icon.svg.png")
         await modlog.send(embed=embed)
+
 
 @bot.event
 async def on_ready():

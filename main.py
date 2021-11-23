@@ -7,6 +7,9 @@ from discord_slash.utils.manage_commands import create_option
 from discord_slash.utils.manage_components import create_button, create_actionrow
 from discord_slash.model import ButtonStyle
 from discord_slash.utils.manage_components import wait_for_component
+import requests
+import csv
+from numpy import genfromtxt
 
 intents = discord.Intents.default()
 intents.members = True
@@ -28,6 +31,65 @@ option_type = {
     "float": 10
 }
 
+# Download scam domains
+scamlist_url = "https://api.hyperphish.com/gimme-domains"
+req = requests.get(scamlist_url)
+url_content = req.content
+bot.json_file = open('scamlist.json', 'wb')
+bot.json_file.write(url_content)
+bot.json_file.close()
+
+
+# @bot.command(name='scamlist', pass_context=True)
+# @commands.has_role('Staff')
+# async def scamlist(ctx):
+#     links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
+#     for link in links:
+#         await ctx.send(link)
+
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+
+    links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
+    filtered_links = []
+    for link in links:
+        filtered_link = link.replace('"', '')
+        filtered_links.append(filtered_link)
+    if any(keyword in message.content.lower() for keyword in filtered_links):
+        await message.delete()
+        await message.channel.send(":warning: Scam detected :warning:")
+        modlog = bot.get_channel(897765157940396052)
+        description = message.author.display_name + " (" + str(message.author.id) + ") " "sent a scam link." + "\nLink: " + message.content + "\n" + "Be careful if you click this link"
+        embed = discord.Embed(title="Scam Detected", description=str(description).replace(',', '').replace('(', '').replace(')', '').replace('\'', ''))
+        embed.set_author(name=message.author.display_name,
+                         icon_url=message.author.avatar_url)
+        embed.set_thumbnail(
+            url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Warning_icon.svg/1153px-Warning_icon.svg.png")
+        await modlog.send(embed=embed)
+
+@bot.event
+async def on_message_edit(message_before, message_after):
+    if message_before.author == bot.user:
+        return
+
+    links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
+    filtered_links = []
+    for link in links:
+        filtered_link = link.replace('"', '')
+        filtered_links.append(filtered_link)
+    if any(keyword in message_after.content.lower() for keyword in filtered_links):
+        await message_after.delete()
+        await message_after.channel.send(":warning: Scam detected :warning:")
+        modlog = bot.get_channel(897765157940396052)
+        description = message_after.author.display_name + " (" + str(message_after.author.id) + ") " "sent a scam link." + "\nLink: " + message_after.content + "\n" + "Be careful if you click this link"
+        embed = discord.Embed(title="Scam Detected", description=str(description).replace(',', '').replace('(', '').replace(')', '').replace('\'', ''))
+        embed.set_author(name=message_after.author.display_name,
+                         icon_url=message_after.author.avatar_url)
+        embed.set_thumbnail(
+            url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Warning_icon.svg/1153px-Warning_icon.svg.png")
+        await modlog.send(embed=embed)
 
 @bot.event
 async def on_ready():
@@ -227,7 +289,7 @@ async def staff(ctx: SlashContext):
                      name="description",
                      description="The description of the embed",
                      option_type=option_type["string"],
-                     required=False
+                     required=True
                  ), create_option(
                      name="channel",
                      description="The channel to send to",
@@ -303,7 +365,7 @@ async def whitelist(ctx, member: discord.Member):
                      name="description",
                      description="The description of the embed",
                      option_type=option_type["string"],
-                     required=False
+                     required=True
                  ), create_option(
                      name="silent",
                      description="Whether to show the creator",

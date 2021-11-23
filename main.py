@@ -1049,14 +1049,14 @@ async def ping(ctx):
              description="Kills Prism Bot")
 @is_owner()
 async def stop(ctx: Context):
-    await ctx.send("Bot is shutting down...")
+    await ctx.send("https://c.tenor.com/huJuK_zUxSAAAAAM/im-dying-jake.gif")
     sys.exit()
 
 
 @bot.command()
 @is_owner()
 async def stop(ctx: Context):
-    await ctx.send("Bot is shutting down...")
+    await ctx.send("https://c.tenor.com/huJuK_zUxSAAAAAM/im-dying-jake.gif")
     sys.exit()
 
 

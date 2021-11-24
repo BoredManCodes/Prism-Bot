@@ -17,7 +17,6 @@ import time
 from discord.ext.commands import *
 import sys
 
-
 intents = discord.Intents.default()
 intents.members = True
 bot = commands.Bot(command_prefix='$', intents=intents, case_insensitive=True)
@@ -38,9 +37,12 @@ option_type = {
     "float": 10
 }
 
+bot_name = "Prism Bot"
+filename = "roles.json"
+status = ""
 # Download scam domains
-scamlist_url = "https://api.hyperphish.com/gimme-domains"
-req = requests.get(scamlist_url)
+bot.scamlist_url = "https://api.hyperphish.com/gimme-domains"
+req = requests.get(bot.scamlist_url)
 url_content = req.content
 bot.json_file = open('scamlist.json', 'wb')
 bot.json_file.write(url_content)
@@ -63,8 +65,7 @@ async def has_perms(ctx):
              guild_ids=guilds,
              description="refreshes the scamlist and counts domains")
 async def scamlist(ctx):
-    scamlist_url = "https://api.hyperphish.com/gimme-domains"
-    req = requests.get(scamlist_url)
+    req = requests.get(bot.scamlist_url)
     url_content = req.content
     bot.json_file = open('scamlist.json', 'wb')
     bot.json_file.write(url_content)
@@ -73,13 +74,19 @@ async def scamlist(ctx):
     count = 0
     for link in links:
         count += 1
-    await ctx.send(f"Updated scam list\nCurrently scanning for {count} scam links\n\nList is generated from: https://api.hyperphish.com/gimme-domains")
+    await ctx.send(f"Updated scam list\nCurrently scanning for {count} scam links\n\n"
+                   f"List is generated from: {bot.scamlist_url}")
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
+    print(log)
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
 
 
 @bot.command(name='scamlist', pass_context=True)
 async def scamlist(ctx):
-    scamlist_url = "https://api.hyperphish.com/gimme-domains"
-    req = requests.get(scamlist_url)
+    req = requests.get(bot.scamlist_url)
     url_content = req.content
     bot.json_file = open('scamlist.json', 'wb')
     bot.json_file.write(url_content)
@@ -88,7 +95,8 @@ async def scamlist(ctx):
     count = 0
     for link in links:
         count += 1
-    await ctx.send(f"Updated scam list\nCurrently scanning for {count} scam links\n\nList is generated from: https://api.hyperphish.com/gimme-domains")
+    await ctx.send(f"Updated scam list\nCurrently scanning for {count} scam links\n\n"
+                   f"List is generated from: {bot.scamlist_url}")
 
 
 @bot.event
@@ -110,20 +118,21 @@ async def on_message(message):
         warn = ":warning::mute:" + message.author.mention + " you have been muted for sending a scam link. Knock it off"
         await message.channel.send(warn)
         modlog = bot.get_channel(897765157940396052)
-        description = message.author.display_name + " [" + str(message.author.id) + "] " "sent a scam link." + "\nLink: " + message.content + "\n" + ":mute: They have been muted :mute:"
-        embed = discord.Embed(title="Scam Detected", description=str(description).replace(',', '').replace('(', '').replace(')', '').replace('\'', ''))
+        description = f"{message.author.display_name} ({message.author.id}) sent a scam link.\n" \
+                      f"Their message: {message.content}\n" \
+                      f":mute: They have been muted automatically"
+        embed = discord.Embed(title="Scam Detected", description=description)
         embed.set_author(name=message.author.display_name,
                          icon_url=message.author.avatar_url)
         embed.set_thumbnail(
             url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Warning_icon.svg/1153px-Warning_icon.svg.png")
         await modlog.send(embed=embed)
     if message.content != '':
-
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
         log = f"[{st}] {message.author.display_name} ({message.author.id}): {message.content}"
         print(log)
-        with open("messages.log", "a") as text_file:
+        with open("messages.log", "a", encoding="utf8") as text_file:
             print(log, file=text_file)
     await bot.process_commands(message)
 
@@ -175,15 +184,21 @@ async def list(ctx: SlashContext, role: discord.Role):
         count += 1
     title_text = "**", count, "members with the", role.mention, "role**"
     title = str(title_text).replace(',', '').replace('(', '').replace(')', '').replace('\'', '')
-    description = str(sorted(usernames, key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
+    description = str(sorted(usernames,
+                             key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
     embed = discord.Embed(description=title + "\n" + description, color=role.color)
-    embed.set_footer(text="Issued by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
     await ctx.send(embed=embed)
-
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
+    print(log)
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
 
 @bot.command(name='buttontest', pass_context=True)
 @check(has_perms)
-async def buttontest(ctx, *, message):
+async def buttontest(ctx):
     buttons = [
         create_button(style=ButtonStyle.green, label="A green button"),
         create_button(style=ButtonStyle.blue, label="A blue button")
@@ -207,24 +222,26 @@ async def on_command_error(ctx, error):
     print(error)
     if isinstance(error, commands.errors.CheckFailure):
         embed = discord.Embed(title="We ran into an error", description="You are not staff", color=discord.Color.red())
-        embed.set_footer(text="Caused by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+        embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
         await ctx.send(embed=embed)
     elif isinstance(error, commands.errors.MissingRequiredArgument):
-        embed = discord.Embed(title="We ran into an error", description="You forgot to define something", color=discord.Color.red())
-        embed.set_footer(text="Caused by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+        embed = discord.Embed(title="We ran into an error", description="You forgot to define something",
+                              color=discord.Color.red())
+        embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
         await ctx.send(embed=embed)
     elif isinstance(error, commands.errors.BotMissingPermissions):
-        embed = discord.Embed(title="We ran into an error", description="I am missing permissions", color=discord.Color.red())
-        embed.set_footer(text="Caused by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+        embed = discord.Embed(title="We ran into an error", description="I am missing permissions",
+                              color=discord.Color.red())
+        embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
         await ctx.send(embed=embed)
     elif isinstance(error, commands.errors.CommandNotFound):
         try:
             print("Doing nothing since this command doesn't exist")
         except:
-            crash = True
+            return
     else:
         embed = discord.Embed(title="We ran into an undefined error", description=error, color=discord.Color.red())
-        embed.set_footer(text="Issued by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+        embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
         await ctx.send(embed=embed)
 
 
@@ -237,15 +254,21 @@ async def on_member_join(member):
             channel = bot.get_channel(858547359804555267)
             title = "Welcome to Prism SMP!"
             description = "Please look at the <#861317568807829535> when you have a minute.\n\n" \
-                   "You can grab some self roles over in <#861288424640348160>.\n" \
-                   "Join the server at least once (the IP is in <#858549386962272296> [You don't have to read the entirety of that])" \
-                   " then ask in <#869280855657447445> to get yourself whitelisted."
+                          "You can grab some self roles over in <#861288424640348160>.\n" \
+                          "Join the server at least once (the IP is in <#858549386962272296>" \
+                          " [You don't have to read the entirety of that])" \
+                          " then ask in <#869280855657447445> to get yourself whitelisted."
             embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
             embed.set_footer(text=member.name, icon_url=member.avatar_url)
             await channel.send(embed=embed)
             role = discord.utils.get(member.guild.roles, name='New Member')
             await member.add_roles(role)
-
+        ts = time.time()
+        st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+        log = f"[{st}] {member.author.display_name} ({member.author.id}) joined"
+        print(log)
+        with open("messages.log", "a", encoding="utf8") as text_file:
+            print(log, file=text_file)
 
 @bot.event
 async def on_member_remove(member):
@@ -258,28 +281,32 @@ async def on_member_remove(member):
             embed = discord.Embed(title=title, color=discord.Color.red())
             embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}", icon_url=member.avatar_url)
             await channel.send(embed=embed)
-
+        ts = time.time()
+        st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+        log = f"[{st}] {member.author.display_name} ({member.author.id}) left"
+        print(log)
+        with open("messages.log", "a", encoding="utf8") as text_file:
+            print(log, file=text_file)
 
 @bot.command(name='lp', pass_context=True)
 @check(has_perms)
 async def lp(ctx, *, message):
     await ctx.message.delete()
-    changes = "```diff\n" + message + "```"
+    changes = f"```diff\n{message} ```"
     embed = discord.Embed(title="Permission Changelog", description=changes, color=0x00ff40)
-    embed.set_footer(text="Issued by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
     await ctx.send(embed=embed)
 
 
 @bot.command(name='game', aliases=['gamecommands', 'gc'], pass_context=True)
 async def game(ctx):
-
-    help = "**Discord Commands:** (can only be run in #in-game-chat)\n`/inv` Shows the contents of your inventory\n"\
-           "`/ender` Shows the contents of your enderchest\n\n**In-game Commands**\n"\
-           "`[ec]` Broadcasts the contents of your enderchest\n`[inv]` Broadcasts the contents of your inventory\n"\
-           "`[item]` Broadcasts your currently held item\n`[pos]` Broadcasts your position\n"\
+    help = "**Discord Commands:** (can only be run in #in-game-chat)\n`/inv` Shows the contents of your inventory\n" \
+           "`/ender` Shows the contents of your enderchest\n\n**In-game Commands**\n" \
+           "`[ec]` Broadcasts the contents of your enderchest\n`[inv]` Broadcasts the contents of your inventory\n" \
+           "`[item]` Broadcasts your currently held item\n`[pos]` Broadcasts your position\n" \
            "`[ping]` Catching on yet?\n`/t <message>` Shortcut for team message"
     embed = discord.Embed(title="Game Command Help", description=help, color=ctx.message.author.color)
-    embed.set_footer(text="Issued by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
     await ctx.send(embed=embed)
 
 
@@ -287,38 +314,50 @@ async def game(ctx):
              guild_ids=guilds,
              description="displays the help")
 async def help(ctx):
-    help = "**Hello Friendo!**\nI am Prism Bot. I'm designed to make your life on Prism easier.\nIf you run into any issues please ping <@324504908013240330>"
+    help = "**Hello Friendo!**\nI am Prism Bot. I'm designed to make your life on Prism easier.\n" \
+           "If you run into any issues please ping <@324504908013240330>"
     embed = discord.Embed(title="Help", description=help, color=ctx.author.color)
-    embed.set_footer(text="Issued by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     embed.set_thumbnail(
         url="https://cdn.discordapp.com/icons/858547359804555264/34eacdf2f8da259c1bf88ba6cbf087c7.jpg")
     await ctx.send(embed=embed)
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
+    print(log)
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
 
 
 @slash.slash(name="game-commands",
              guild_ids=guilds,
              description="displays the list of game commands")
 async def game(ctx):
-
-    help = "**Discord Commands:** (can only be run in #in-game-chat)\n`/inv` Shows the contents of your inventory\n"\
-           "`/ender` Shows the contents of your enderchest\n\n**In-game Commands**\n"\
-           "`[ec]` Broadcasts the contents of your enderchest\n`[inv]` Broadcasts the contents of your inventory\n"\
-           "`[item]` Broadcasts your currently held item\n`[pos]` Broadcasts your position\n"\
+    help = "**Discord Commands:** (can only be run in #in-game-chat)\n`/inv` Shows the contents of your inventory\n" \
+           "`/ender` Shows the contents of your enderchest\n\n**In-game Commands**\n" \
+           "`[ec]` Broadcasts the contents of your enderchest\n`[inv]` Broadcasts the contents of your inventory\n" \
+           "`[item]` Broadcasts your currently held item\n`[pos]` Broadcasts your position\n" \
            "`[ping]` Catching on yet?\n`/t <message>` Shortcut for team message"
     embed = discord.Embed(title="Game Command Help", description=help, color=ctx.author.color)
-    embed.set_footer(text="Issued by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send(embed=embed)
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
+    print(log)
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
 
 
 @bot.command(name='bolte', aliases=['boltecommands', 'bc'], pass_context=True)
 async def bolte(ctx):
-
-    help = "**Prismian Commands:**\n`/iam` Allows you to choose roles\n`/iamnot` Removes those roles\n"\
-           "`/reminder create` Kinda self-explanatory\n`/reminder view` See above\n"\
-           "`/suggestion create` Creates a suggestion for the staff to review\n"\
-           "`/spotify` Easily share what you're currently listening to\n`$play <song>` Plays music in your VC\n`$skip` Skips your song"
+    help = "**Prismian Commands:**\n`/iam` Allows you to choose roles\n`/iamnot` Removes those roles\n" \
+           "`/reminder create` Kinda self-explanatory\n`/reminder view` See above\n" \
+           "`/suggestion create` Creates a suggestion for the staff to review\n" \
+           "`/spotify` Easily share what you're currently listening to\n`$play <song>` Plays music in your VC\n" \
+           "`$skip` Skips your song"
     embed = discord.Embed(title="Prism Bot Command Help", description=help, color=ctx.message.author.color)
-    embed.set_footer(text="Issued by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
     await ctx.send(embed=embed)
 
 
@@ -326,14 +365,20 @@ async def bolte(ctx):
              guild_ids=guilds,
              description="displays the list of bolte commands")
 async def bolte(ctx):
-
-    help = "**Prismian Commands:**\n`/iam` Allows you to choose roles\n`/iamnot` Removes those roles\n"\
-           "`/reminder create` Kinda self-explanatory\n`/reminder view` See above\n"\
-           "`/suggestion create` Creates a suggestion for the staff to review\n"\
-           "`/spotify` Easily share what you're currently listening to\n`$play <song>` Plays music in your VC\n`$skip` Skips your song"
+    help = "**Prismian Commands:**\n`/iam` Allows you to choose roles\n`/iamnot` Removes those roles\n" \
+           "`/reminder create` Kinda self-explanatory\n`/reminder view` See above\n" \
+           "`/suggestion create` Creates a suggestion for the staff to review\n" \
+           "`/spotify` Easily share what you're currently listening to\n`$play <song>` Plays music in your VC\n" \
+           "`$skip` Skips your song"
     embed = discord.Embed(title="Bolte:tm: Command Help", description=help, color=ctx.author.color)
-    embed.set_footer(text="Issued by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send(embed=embed)
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
+    print(log)
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
 
 
 @slash.slash(name="staff-commands",
@@ -341,30 +386,36 @@ async def bolte(ctx):
              description="displays the list of staff commands")
 @check(has_perms)
 async def staff(ctx):
-
-    help = "**Staff Commands**\n"\
-           "`/self-roles add` Adds a role to the `/iam` command\n`/self-roles remove` Does the opposite\n"\
-           "`/poll` Creates a poll for people to vote on\n"\
-           "`/suggestion view` A nifty menu for viewing suggestions\n"\
-           "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n"\
-           "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n`/whitelist <user>` Whitelists the user"
+    help = "**Staff Commands**\n" \
+           "`/self-roles add` Adds a role to the `/iam` command\n`/self-roles remove` Does the opposite\n" \
+           "`/poll` Creates a poll for people to vote on\n" \
+           "`/suggestion view` A nifty menu for viewing suggestions\n" \
+           "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n" \
+           "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n" \
+           "`/whitelist <user>` Whitelists the user"
     embed = discord.Embed(title="Bolte:tm: Command Help", description=help, color=ctx.author.color)
-    embed.set_footer(text="Issued by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send(embed=embed)
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
+    print(log)
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
 
 
 @bot.command(name='staff', aliases=['staffcommands', 'sc'], pass_context=True)
 @check(has_perms)
 async def staff(ctx: SlashContext):
-
-    help = "**Staff Commands**\n"\
-           "`/self-roles add` Adds a role to the `/iam` command\n`/self-roles remove` Does the opposite\n"\
-           "`/poll` Creates a poll for people to vote on\n"\
-           "`/suggestion view` A nifty menu for viewing suggestions\n"\
-           "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n"\
-           "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n`$whitelist <mention discord user>` Whitelists the user"
+    help = "**Staff Commands**\n" \
+           "`/self-roles add` Adds a role to the `/iam` command\n`/self-roles remove` Does the opposite\n" \
+           "`/poll` Creates a poll for people to vote on\n" \
+           "`/suggestion view` A nifty menu for viewing suggestions\n" \
+           "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n" \
+           "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n" \
+           "`$whitelist <mention discord user>` Whitelists the user"
     embed = discord.Embed(title="Prism Bot Command Help", description=help, color=ctx.message.author.color)
-    embed.set_footer(text="Issued by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send(embed=embed)
 
 
@@ -398,9 +449,15 @@ async def staff(ctx: SlashContext):
 async def embed(ctx: SlashContext, *, title, description, channel: discord.TextChannel, silent):
     embed = discord.Embed(title=title, description=description, color=ctx.author.color)
     if not silent:
-        embed.set_footer(text="Issued by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
+        embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send("Embed sent", hidden=True)
     await channel.send(embed=embed)
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
+    print(log)
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
 
 
 @slash.slash(name="whitelist",
@@ -419,11 +476,18 @@ async def whitelist(ctx: SlashContext, member: discord.Member):
     channel = bot.get_channel(869280855657447445)
     role = discord.utils.get(member.guild.roles, name='Whitelisted')
     await member.add_roles(role)
-    message = "Added " + member.mention + " to the whitelist"
-    embed = discord.Embed(title="Whitelisted", description=message, color=ctx.author.color)
-    embed.set_footer(text="Whitelisted by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
+    message = f"Added {member.mention} to the whitelist"
+    embed = discord.Embed(description=message, color=ctx.author.color)
+    embed.set_footer(text=f"Whitelisted by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+    embed.set_author(name=":clipboard:")
     await channel.send(embed=embed)
     await ctx.send(embed=embed, hidden=True)
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
+    print(log)
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
 
 
 @bot.command(name='whitelist', pass_context=True)
@@ -433,9 +497,10 @@ async def whitelist(ctx, member: discord.Member):
     channel = bot.get_channel(869280855657447445)
     role = discord.utils.get(member.guild.roles, id=899568696593367070)
     await member.add_roles(role)
-    message = "Added " + member.display_name + " to the whitelist"
-    embed = discord.Embed(title="Whitelisted", description=message, color=ctx.message.author.color)
-    embed.set_footer(text="Whitelisted by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+    message = "Added {member.display_name} to the whitelist"
+    embed = discord.Embed(description=message, color=ctx.message.author.color)
+    embed.set_footer(text=f"Whitelisted by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+    embed.set_author(name=":clipboard:")
     await channel.send(embed=embed)
 
 
@@ -469,15 +534,22 @@ async def whitelist(ctx, member: discord.Member):
 async def embed(ctx: SlashContext, *, embedlink, title, description, silent):
     newembed = discord.Embed(title=title, description=description, color=ctx.author.color)
     if not silent:
-        embed.set_footer(text="Issued by " + ctx.author.display_name, icon_url=ctx.author.avatar_url)
+        embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send("Embed edited", hidden=True)
     editembed = embedlink.split('/')
     message = await bot.get_guild(int(editembed[-3])).get_channel(int(editembed[-2])).fetch_message(int(editembed[-1]))
     await message.edit(embed=newembed)
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
+    print(log)
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
+
 
 # Ping logger, currently disabled but working
-#@bot.event
-#async def on_message(message):
+# @bot.event
+# async def on_message(message):
 #    blacklist_guilds = [858547359804555264]
 #    blacklist_channels = [900307948969025576]
 #    if message.guild.id in blacklist_guilds or message.channel.id in blacklist_channels:
@@ -498,19 +570,12 @@ async def embed(ctx: SlashContext, *, embedlink, title, description, silent):
 #        else:
 #            return
 
-bot_name = "Prism Bot"
-filename = "roles.json"
-status = ""
-
-
 
 def jsondump(v: dict):
     RolesJson.seek(0)
     json.dump(v, RolesJson)
     RolesJson.truncate()
     RolesJson.seek(0)
-
-
 
 
 def timeformat(secs):
@@ -520,14 +585,17 @@ def timeformat(secs):
     ddays = 86400
     dhours = 3600
     dmins = 60
-    years = int(secs//dyears)
-    month = int((secs - years*dyears)//dmonth)
-    weeks = int((secs - years*dyears - month*dmonth)//dweeks)
-    days = int((secs - years*dyears - month*dmonth - weeks*dweeks)//ddays)
-    hours = int((secs - years*dyears - month*dmonth - weeks*dweeks - days*ddays)//dhours)
-    minutes = int((secs - years*dyears - month*dmonth - weeks*dweeks - days*ddays - hours*dhours)//dmins)
-    seconds = int((secs - years*dyears - month*dmonth - weeks*dweeks - days*ddays - hours*dhours - minutes*dmins)//1)
-    milliseconds = float(round(((secs - years*dyears - month*dmonth - weeks*dweeks - days*ddays - hours*dhours - minutes*dmins - seconds)*1000), 3))
+    years = int(secs // dyears)
+    month = int((secs - years * dyears) // dmonth)
+    weeks = int((secs - years * dyears - month * dmonth) // dweeks)
+    days = int((secs - years * dyears - month * dmonth - weeks * dweeks) // ddays)
+    hours = int((secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays) // dhours)
+    minutes = int((secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays - hours * dhours) // dmins)
+    seconds = int((
+                              secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays - hours * dhours - minutes * dmins) // 1)
+    milliseconds = float(round(((
+                                            secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays - hours * dhours - minutes * dmins - seconds) * 1000),
+                               3))
     if milliseconds.is_integer():
         int(milliseconds)
     result = []
@@ -596,7 +664,8 @@ async def on_ready():
         for member in RJD[role[0]]:
             if member[1] <= time.time():
                 try:
-                    await TestingZone.get_member(member[0]).remove_roles(TestingZone.get_role(int(role[0])), reason="expired")
+                    await TestingZone.get_member(member[0]).remove_roles(TestingZone.get_role(int(role[0])),
+                                                                         reason="expired")
                 except:
                     pass
                 RJD[role[0]].remove(member)
@@ -640,11 +709,12 @@ async def on_ready():
                 continue
             for memberlist in RJD[n]:
                 memberlist[1] -= 0.5
+
     dec.start()
 
 
 @bot.event
-async def on_member_update(before:discord.Member, after:discord.Member):
+async def on_member_update(before: discord.Member, after: discord.Member):
     RolesJson.seek(0)
     a = json.load(RolesJson)
     RolesJson.seek(0)
@@ -705,7 +775,8 @@ async def expire(ctx: Context, role: discord.Role, *, time: str):
         RolesJsonData["roles"].append([t, ExpireDuration])
         RolesJsonData[t] = []
     jsondump(RolesJsonData)
-    await ctx.send(f"✅ set {role.name} to expire {str(Duration(time)).replace('<Duration ', 'after ').replace('>', '')}")
+    await ctx.send(
+        f"✅ set {role.name} to expire {str(Duration(time)).replace('<Duration ', 'after ').replace('>', '')}")
 
 
 @bot.command()
@@ -781,6 +852,7 @@ async def unexpire(ctx, role: discord.Role):
             del RJD[str(role.id)]
     jsondump(RolesJsonData)
     await ctx.message.add_reaction("✅")
+
 
 @slash.slash(name="role-help",
              guild_ids=guilds,
@@ -1082,6 +1154,3 @@ async def on_command_error(ctx: Context, err):
 
 
 bot.run(toe_ken)
-
-
-

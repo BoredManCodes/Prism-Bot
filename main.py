@@ -1,3 +1,4 @@
+from datetime import datetime
 import discord.ext
 from discord.ext import commands
 from decouple import config
@@ -45,13 +46,15 @@ bot.json_file = open('scamlist.json', 'wb')
 bot.json_file.write(url_content)
 bot.json_file.close()
 
+
 async def has_perms(ctx):
     for b in ctx.author.roles:
         if b.id in RJD["perms"]:
             return True
-    embed = discord.Embed(title="We ran into an error", description="You don't have permissions to manage this bot's functions",
+    embed = discord.Embed(title="We ran into an error",
+                          description="You don't have permissions to manage this bot's functions",
                           color=discord.Color.red())
-    embed.set_footer(text="Caused by " + ctx.message.author.display_name, icon_url=ctx.message.author.avatar_url)
+    embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
     await ctx.send(embed=embed)
     return False
 
@@ -114,7 +117,14 @@ async def on_message(message):
         embed.set_thumbnail(
             url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Warning_icon.svg/1153px-Warning_icon.svg.png")
         await modlog.send(embed=embed)
+    if message.content != '':
 
+        ts = time.time()
+        st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+        log = f"[{st}] {message.author.display_name} ({message.author.id}): {message.content}"
+        print(log)
+        with open("messages.log", "a") as text_file:
+            print(log, file=text_file)
     await bot.process_commands(message)
 
 
@@ -219,9 +229,9 @@ async def on_command_error(ctx, error):
 
 
 @bot.event
-async def on_member_join(ctx):
-    if ctx.guild.id == 858547359804555264:
-        if ctx.bot:
+async def on_member_join(member):
+    if member.guild.id == 858547359804555264:
+        if member.bot:
             return
         else:
             channel = bot.get_channel(858547359804555267)
@@ -231,10 +241,23 @@ async def on_member_join(ctx):
                    "Join the server at least once (the IP is in <#858549386962272296> [You don't have to read the entirety of that])" \
                    " then ask in <#869280855657447445> to get yourself whitelisted."
             embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
-            embed.set_footer(text=ctx.name, icon_url=ctx.avatar_url)
+            embed.set_footer(text=member.name, icon_url=member.avatar_url)
             await channel.send(embed=embed)
-            role = discord.utils.get(ctx.guild.roles, name='New Member')
-            await ctx.add_roles(role)
+            role = discord.utils.get(member.guild.roles, name='New Member')
+            await member.add_roles(role)
+
+
+@bot.event
+async def on_member_remove(member):
+    if member.guild.id == 858547359804555264:
+        if member.bot:
+            return
+        else:
+            channel = bot.get_channel(897765157940396052)
+            title = f"{member.display_name} left the server"
+            embed = discord.Embed(title=title, color=discord.Color.red())
+            embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}", icon_url=member.avatar_url)
+            await channel.send(embed=embed)
 
 
 @bot.command(name='lp', pass_context=True)
@@ -554,13 +577,6 @@ def timeformat(secs):
         result.append(f"{milliseconds} millisecond{s}")
     result = ", ".join(result)
     return result
-
-
-# EVENTS
-@bot.event
-async def on_message(message):
-    await bot.process_commands(message)
-    print(f'{message.author.display_name} sent: {message.content}')
 
 
 @bot.event

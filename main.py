@@ -78,8 +78,8 @@ async def scamlist(ctx):
                    f"List is generated from: {bot.scamlist_url}")
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
-    print(log)
+    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
+    
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -127,11 +127,17 @@ async def on_message(message):
         embed.set_thumbnail(
             url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Warning_icon.svg/1153px-Warning_icon.svg.png")
         await modlog.send(embed=embed)
+        ts = time.time()
+        st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+        log = f"<pre><code class=\"language-lua\">[{st}] {message.author.display_name} ({message.author.id}) in {message.channel.name} sent a scam link</code></pre>"
+
+        with open("messages.log", "a", encoding="utf8") as text_file:
+            print(log, file=text_file)
     if message.content != '':
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"[{st}] {message.author.display_name} ({message.author.id}): {message.content}"
-        print(log)
+        log = f"<pre><code class=\"language-lua\">[{st}] {message.author.display_name} ({message.author.id}) in {message.channel.name}: {message.content}</code></pre>"
+        
         with open("messages.log", "a", encoding="utf8") as text_file:
             print(log, file=text_file)
     await bot.process_commands(message)
@@ -191,8 +197,8 @@ async def list(ctx: SlashContext, role: discord.Role):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
-    print(log)
+    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
+    
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -265,8 +271,8 @@ async def on_member_join(member):
             await member.add_roles(role)
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"[{st}] {member.author.display_name} ({member.author.id}) joined"
-        print(log)
+        log = f"<pre><code class=\"language-lua\">[{st}] {member.author.display_name} ({member.author.id}) joined</code></pre>"
+        
         with open("messages.log", "a", encoding="utf8") as text_file:
             print(log, file=text_file)
 
@@ -283,8 +289,8 @@ async def on_member_remove(member):
             await channel.send(embed=embed)
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"[{st}] {member.author.display_name} ({member.author.id}) left"
-        print(log)
+        log = f"<pre><code class=\"language-lua\">[{st}] {member.author.display_name} ({member.author.id}) left</code></pre>"
+        
         with open("messages.log", "a", encoding="utf8") as text_file:
             print(log, file=text_file)
 
@@ -323,8 +329,7 @@ async def help(ctx):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
-    print(log)
+    
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -343,8 +348,8 @@ async def game(ctx):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
-    print(log)
+    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
+    
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -375,8 +380,8 @@ async def bolte(ctx):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
-    print(log)
+    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
+    
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -398,8 +403,8 @@ async def staff(ctx):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
-    print(log)
+    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
+    
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -454,8 +459,8 @@ async def embed(ctx: SlashContext, *, title, description, channel: discord.TextC
     await channel.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
-    print(log)
+    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
+    
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -484,8 +489,8 @@ async def whitelist(ctx: SlashContext, member: discord.Member):
     await ctx.send(embed=embed, hidden=True)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
-    print(log)
+    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
+    
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -541,8 +546,8 @@ async def embed(ctx: SlashContext, *, embedlink, title, description, silent):
     await message.edit(embed=newembed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}"
-    print(log)
+    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
+    
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 

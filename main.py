@@ -1,5 +1,8 @@
+import asyncio
+import hashlib
 from datetime import datetime
 import discord.ext
+import vt
 from discord.ext import commands
 from decouple import config
 from discord_slash import SlashCommand, SlashContext, ComponentContext
@@ -61,6 +64,40 @@ async def has_perms(ctx):
     return False
 
 
+@bot.event
+async def on_ready():
+    global RJD, RolesJson
+    TestingZone = bot.get_guild(int(config('guild_id')))
+    try:
+        RolesJson = open(filename, "r+")
+    except:
+        RolesJson = open(filename, "w+")
+        json.dump({"perms": [], "roles": []}, RolesJson)
+        RolesJson.seek(0)
+    # Setup
+    RJD = json.load(RolesJson)
+    RolesJson.seek(0)
+    for role in RJD["roles"]:
+        for member in RJD[role[0]]:
+            if member[1] <= time.time():
+                try:
+                    await TestingZone.get_member(member[0]).remove_roles(TestingZone.get_role(int(role[0])),
+                                                                         reason="expired")
+                except:
+                    pass
+                RJD[role[0]].remove(member)
+            else:
+                break
+    jsondump(RJD)
+    current_time = time.time()
+    for role in RJD["roles"]:
+        for member in RJD[role[0]]:
+            member[1] -= current_time
+    print("Bot is ready")
+    print(f"Prism Bot")
+    print(f"Discord API Version: {discord.__version__}")
+
+
 @slash.slash(name="scamlist",
              guild_ids=guilds,
              description="refreshes the scamlist and counts domains")
@@ -78,8 +115,8 @@ async def scamlist(ctx):
                    f"List is generated from: {bot.scamlist_url}")
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
-    
+    log = f"<p class=\"time\">[{st}] <span class=\"name\">{ctx.author.display_name} ({ctx.author.id}) <span class=\"white\">ran <p class=\"white\">/{ctx.name} {ctx.args}"
+
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -103,7 +140,7 @@ async def scamlist(ctx):
 async def on_message(message):
     if message.author == bot.user:
         return
-    if "https://discord.gift/" in message.content:
+    if "https://discord.gift/" in message.content.lower():
         await message.channel.send(":warning: FREE NITRO! :warning:\nThis link appears to be legitimate :D")
         return
     links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
@@ -129,17 +166,57 @@ async def on_message(message):
         await modlog.send(embed=embed)
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"<pre><code class=\"language-lua\">[{st}] {message.author.display_name} ({message.author.id}) in {message.channel.name} sent a scam link</code></pre>"
+        log = f"<p class=\"time\">[{st}] <span class=\"channel\">in {message.channel.name} <span class=\"name\">{message.author.display_name} ({message.author.id})<span class=\"channel\"> sent a scam link"
+        with open("messages.log", "a", encoding="utf8") as text_file:
+            print(log, file=text_file)
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    for i in message.attachments:
+        dodgy_files = [".exe", ".bat", ".vbs", ".jar", ".apk", ".app"]
+        if any(keyword in message.content.lower() for keyword in dodgy_files):
+            print(i)
+            await message.delete()
+            warn = ":warning:" + message.author.mention + " please don't send executable files."
+            await message.channel.send(warn)
+            modlog = bot.get_channel(897765157940396052)
+            description = f"{message.author.display_name} ({message.author.id}) sent an executable file.\n" \
+                          f"Their message: {str(i)}\n" \
+                          f":thinking: One of those <@&858547638719086613> folk should check what's going on"
+            embed = discord.Embed(title="Executable Deleted", description=description)
+            embed.set_author(name=message.author.display_name,
+                              icon_url=message.author.avatar_url)
+            embed.set_thumbnail(
+                url="https://icon-library.com/images/exe-icon/exe-icon-2.jpg")
+            await modlog.send(embed=embed)
+            return
+        else:
+            virus_client = vt.Client(config("virus_api"))
+            await message.add_reaction("❓")
+            data = {'url': str(i)}
+            api_url = 'https://www.virustotal.com/api/v3/urls'
+            headers = {'x-apikey': config("virus_api")}
+            response = requests.post(api_url, headers=headers, data=data)
+            print(response)
+            if response.status_code == 200:
+                await message.clear_reactions()
+                await message.add_reaction("⏳") # hourglass
+                att_url = str(i)
+                try:
+                    id_url = vt.url_id(att_url)
+                    result = await virus_client.get_object_async(f"/urls/{id_url}")
+                    print(result)
+                    await message.channel.send(result.last_analysis_stats)
+                    await message.clear_reactions()
+                    await message.add_reaction("🤔") # thinking
+                except:
+                    await message.clear_reactions()
+                    await message.add_reaction("❌") # X
+                    await message.reply(":thinking: I ran into an error checking this for viruses. Proceed with caution")
 
-        with open("messages.log", "a", encoding="utf8") as text_file:
-            print(log, file=text_file)
-    if message.content != '':
-        ts = time.time()
-        st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"<pre><code class=\"language-lua\">[{st}] {message.author.display_name} ({message.author.id}) in {message.channel.name}: {message.content}</code></pre>"
-        
-        with open("messages.log", "a", encoding="utf8") as text_file:
-            print(log, file=text_file)
+    log = f"<p class=\"time\">[{st}] <span class=\"channel\">in {message.channel.name} <span class=\"name\">{message.author.display_name} ({message.author.id}) sent: <p class=\"white\">{message.content}"
+
+    with open("messages.log", "a", encoding="utf8") as text_file:
+        print(log, file=text_file)
     await bot.process_commands(message)
 
 
@@ -197,10 +274,11 @@ async def list(ctx: SlashContext, role: discord.Role):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
-    
+    log = f"<p class=\"time\">[{st}] <span class=\"name\">{ctx.author.display_name} ({ctx.author.id}) <span class=\"white\">ran <p class=\"white\">/{ctx.name} {ctx.args}"
+
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
+
 
 @bot.command(name='buttontest', pass_context=True)
 @check(has_perms)
@@ -271,10 +349,11 @@ async def on_member_join(member):
             await member.add_roles(role)
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"<pre><code class=\"language-lua\">[{st}] {member.author.display_name} ({member.author.id}) joined</code></pre>"
-        
+        log = f"<p class=\"time\">[{st}] <span class=\"name\">{member.author.display_name} ({member.author.id}) <span class=\"white\">joined"
+
         with open("messages.log", "a", encoding="utf8") as text_file:
             print(log, file=text_file)
+
 
 @bot.event
 async def on_member_remove(member):
@@ -289,10 +368,11 @@ async def on_member_remove(member):
             await channel.send(embed=embed)
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"<pre><code class=\"language-lua\">[{st}] {member.author.display_name} ({member.author.id}) left</code></pre>"
-        
+        log = f"<p class=\"time\">[{st}] <span class=\"name\">{member.author.display_name} ({member.author.id}) <span class=\"white\">left"
+
         with open("messages.log", "a", encoding="utf8") as text_file:
             print(log, file=text_file)
+
 
 @bot.command(name='lp', pass_context=True)
 @check(has_perms)
@@ -329,7 +409,7 @@ async def help(ctx):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    
+
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -348,8 +428,8 @@ async def game(ctx):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
-    
+    log = f"<p class=\"time\">[{st}] <span class=\"name\">{ctx.author.display_name} ({ctx.author.id}) <span class=\"white\">ran <p class=\"white\">/{ctx.name} {ctx.args}"
+
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -380,8 +460,8 @@ async def bolte(ctx):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
-    
+    log = f"<p class=\"time\">[{st}] <span class=\"name\">{ctx.author.display_name} ({ctx.author.id}) <span class=\"white\">ran <p class=\"white\">/{ctx.name} {ctx.args}"
+
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -403,8 +483,8 @@ async def staff(ctx):
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
-    
+    log = f"<p class=\"time\">[{st}] <span class=\"name\">{ctx.author.display_name} ({ctx.author.id}) <span class=\"white\">ran <p class=\"white\">/{ctx.name} {ctx.args}"
+
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -459,8 +539,8 @@ async def embed(ctx: SlashContext, *, title, description, channel: discord.TextC
     await channel.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
-    
+    log = f"<p class=\"time\">[{st}] <span class=\"name\">{ctx.author.display_name} ({ctx.author.id}) <span class=\"white\">ran <p class=\"white\">/{ctx.name} {ctx.args}"
+
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -489,8 +569,8 @@ async def whitelist(ctx: SlashContext, member: discord.Member):
     await ctx.send(embed=embed, hidden=True)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
-    
+    log = f"<p class=\"time\">[{st}] <span class=\"name\">{ctx.author.display_name} ({ctx.author.id}) <span class=\"white\">ran <p class=\"white\">/{ctx.name} {ctx.args}"
+
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -546,8 +626,8 @@ async def embed(ctx: SlashContext, *, embedlink, title, description, silent):
     await message.edit(embed=newembed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    log = f"<pre><code class=\"language-lua\">[{st}] {ctx.author.display_name} ({ctx.author.id}) ran /{ctx.name} {ctx.args}</code></pre>"
-    
+    log = f"<p class=\"time\">[{st}] <span class=\"name\">{ctx.author.display_name} ({ctx.author.id}) <span class=\"white\">ran <p class=\"white\">/{ctx.name} {ctx.args}"
+
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
 
@@ -597,9 +677,9 @@ def timeformat(secs):
     hours = int((secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays) // dhours)
     minutes = int((secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays - hours * dhours) // dmins)
     seconds = int((
-                              secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays - hours * dhours - minutes * dmins) // 1)
+                          secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays - hours * dhours - minutes * dmins) // 1)
     milliseconds = float(round(((
-                                            secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays - hours * dhours - minutes * dmins - seconds) * 1000),
+                                        secs - years * dyears - month * dmonth - weeks * dweeks - days * ddays - hours * dhours - minutes * dmins - seconds) * 1000),
                                3))
     if milliseconds.is_integer():
         int(milliseconds)
@@ -651,39 +731,6 @@ def timeformat(secs):
     result = ", ".join(result)
     return result
 
-
-@bot.event
-async def on_ready():
-    global RJD, RolesJson
-    TestingZone = bot.get_guild(int(config('guild_id')))
-    try:
-        RolesJson = open(filename, "r+")
-    except:
-        RolesJson = open(filename, "w+")
-        json.dump({"perms": [], "roles": []}, RolesJson)
-        RolesJson.seek(0)
-    # Setup
-    RJD = json.load(RolesJson)
-    RolesJson.seek(0)
-    for role in RJD["roles"]:
-        for member in RJD[role[0]]:
-            if member[1] <= time.time():
-                try:
-                    await TestingZone.get_member(member[0]).remove_roles(TestingZone.get_role(int(role[0])),
-                                                                         reason="expired")
-                except:
-                    pass
-                RJD[role[0]].remove(member)
-            else:
-                break
-    jsondump(RJD)
-    current_time = time.time()
-    for role in RJD["roles"]:
-        for member in RJD[role[0]]:
-            member[1] -= current_time
-    print("Bot is ready")
-    print(f"Prism Bot")
-    print(f"Discord API Version: {discord.__version__}")
 
     async def pushList(n: str):
         try:
@@ -781,7 +828,7 @@ async def expire(ctx: Context, role: discord.Role, *, time: str):
         RolesJsonData[t] = []
     jsondump(RolesJsonData)
     await ctx.send(
-        f"✅ set {role.name} to expire {str(Duration(time)).replace('<Duration ', 'after ').replace('>', '')}")
+        f"? set {role.name} to expire {str(Duration(time)).replace('<Duration ', 'after ').replace('>', '')}")
 
 
 @bot.command()
@@ -814,7 +861,7 @@ async def expire(ctx: Context, role: discord.Role, *, time: str):
         RolesJsonData["roles"].append([t, ExpireDuration])
         RolesJsonData[t] = []
     jsondump(RolesJsonData)
-    await ctx.message.add_reaction("✅")
+    await ctx.message.add_reaction("?")
 
 
 @slash.slash(name="role-unexpire",
@@ -840,7 +887,7 @@ async def unexpire(ctx, role: discord.Role):
             del RolesJsonData[str(role.id)]
             del RJD[str(role.id)]
     jsondump(RolesJsonData)
-    await ctx.send(f"✅ set {role.name} to not expire")
+    await ctx.send(f"? set {role.name} to not expire")
 
 
 @bot.command()
@@ -856,7 +903,7 @@ async def unexpire(ctx, role: discord.Role):
             del RolesJsonData[str(role.id)]
             del RJD[str(role.id)]
     jsondump(RolesJsonData)
-    await ctx.message.add_reaction("✅")
+    await ctx.message.add_reaction("?")
 
 
 @slash.slash(name="role-help",
@@ -972,7 +1019,7 @@ async def addperm(ctx: Context, role: discord.Role):
         RolesJson.seek(0)
         y["perms"].append(r)
         jsondump(y)
-        await ctx.send(f"✅ added {role.name} to the management team")
+        await ctx.send(f"? added {role.name} to the management team")
     else:
         await ctx.send("That role already has permissions!")
 
@@ -987,7 +1034,7 @@ async def addperm(ctx: Context, role: discord.Role):
         RolesJson.seek(0)
         y["perms"].append(r)
         jsondump(y)
-        await ctx.send(f"✅ added {role.name} to the management team")
+        await ctx.send(f"? added {role.name} to the management team")
     else:
         await ctx.send("That role already has permissions!")
 
@@ -1012,7 +1059,7 @@ async def delperm(ctx: Context, role: discord.Role):
         RolesJson.seek(0)
         y["perms"].remove(r)
         jsondump(y)
-        await ctx.send(f"✅ removed {role.name} from the management role")
+        await ctx.send(f"? removed {role.name} from the management role")
     else:
         await ctx.send("I don't think that role had permissions :confused:")
 
@@ -1027,7 +1074,7 @@ async def delperm(ctx: Context, role: discord.Role):
         RolesJson.seek(0)
         y["perms"].remove(r)
         jsondump(y)
-        await ctx.send(f"✅ removed {role.name} from the management role")
+        await ctx.send(f"? removed {role.name} from the management role")
     else:
         await ctx.send("I don't think that role had permissions :confused:")
 
@@ -1137,25 +1184,20 @@ async def ping(ctx):
     await ctx.send(f'My ping is {round((bot.latency * 1000), 3)} ms!')
 
 
-@slash.slash(name="stop",
+@slash.slash(name="kill",
              guild_ids=guilds,
              description="Kills Prism Bot")
 @is_owner()
-async def stop(ctx: Context):
+async def kill(ctx: Context):
     await ctx.send("https://c.tenor.com/huJuK_zUxSAAAAAM/im-dying-jake.gif")
     sys.exit()
 
 
 @bot.command()
 @is_owner()
-async def stop(ctx: Context):
+async def kill(ctx: Context):
     await ctx.send("https://c.tenor.com/huJuK_zUxSAAAAAM/im-dying-jake.gif")
     sys.exit()
-
-
-@bot.event
-async def on_command_error(ctx: Context, err):
-    await ctx.send(err)
 
 
 bot.run(toe_ken)

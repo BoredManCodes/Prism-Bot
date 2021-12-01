@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 from datetime import datetime
 import discord.ext
-import vt
 from discord.ext import commands
 from decouple import config
 from discord_slash import SlashCommand, SlashContext, ComponentContext
@@ -98,6 +97,16 @@ async def on_ready():
     print(f"Discord API Version: {discord.__version__}")
 
 
+@bot.event
+async def on_reaction_add(reaction, user: discord.member):
+    if reaction.emoji == '🔄':
+        print("🔄")
+        for b in user.roles:
+            if b.id in RJD["perms"]:
+                print(reaction, user)
+                await reaction.add_reaction('🔄')
+
+
 @slash.slash(name="scamlist",
              guild_ids=guilds,
              description="refreshes the scamlist and counts domains")
@@ -143,75 +152,103 @@ async def on_message(message):
     if "https://discord.gift/" in message.content.lower():
         await message.channel.send(":warning: FREE NITRO! :warning:\nThis link appears to be legitimate :D")
         return
-    links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
-    filtered_links = []
-    for link in links:
-        filtered_link = link.replace('"', '')
-        filtered_links.append(filtered_link)
-    if any(keyword in message.content.lower() for keyword in filtered_links):
-        await message.delete()
-        role = discord.utils.get(message.guild.roles, name='Muted')
-        await message.author.add_roles(role)
-        warn = ":warning::mute:" + message.author.mention + " you have been muted for sending a scam link. Knock it off"
-        await message.channel.send(warn)
-        modlog = bot.get_channel(897765157940396052)
-        description = f"{message.author.display_name} ({message.author.id}) sent a scam link.\n" \
-                      f"Their message: {message.content}\n" \
-                      f":mute: They have been muted automatically"
-        embed = discord.Embed(title="Scam Detected", description=description)
-        embed.set_author(name=message.author.display_name,
-                         icon_url=message.author.avatar_url)
-        embed.set_thumbnail(
-            url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Warning_icon.svg/1153px-Warning_icon.svg.png")
-        await modlog.send(embed=embed)
-        ts = time.time()
-        st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"<p class=\"time\">[{st}] <span class=\"channel\">in {message.channel.name} <span class=\"name\">{message.author.display_name} ({message.author.id})<span class=\"channel\"> sent a scam link"
-        with open("messages.log", "a", encoding="utf8") as text_file:
-            print(log, file=text_file)
+    # links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
+    # filtered_links = []
+    # for link in links:
+    #     filtered_link = link.replace('"', '')
+    #     filtered_links.append(filtered_link)
+    # if any(keyword in message.content.lower() for keyword in filtered_links):
+    #     await message.delete()
+    #     role = discord.utils.get(message.guild.roles, name='Muted')
+    #     await message.author.add_roles(role)
+    #     warn = ":warning::mute:" + message.author.mention + " you have been muted for sending a scam link. Knock it off"
+    #     await message.channel.send(warn)
+    #     modlog = bot.get_channel(897765157940396052)
+    #     description = f"{message.author.display_name} ({message.author.id}) sent a scam link.\n" \
+    #                   f"Their message: {message.content}\n" \
+    #                   f":mute: They have been muted automatically"
+    #     embed = discord.Embed(title="Scam Detected", description=description)
+    #     embed.set_author(name=message.author.display_name,
+    #                      icon_url=message.author.avatar_url)
+    #     embed.set_thumbnail(
+    #         url="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Warning_icon.svg/1153px-Warning_icon.svg.png")
+    #     await modlog.send(embed=embed)
+    #     ts = time.time()
+    #     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    #     log = f"<p class=\"time\">[{st}] <span class=\"channel\">in {message.channel.name} <span class=\"name\">{message.author.display_name} ({message.author.id})<span class=\"channel\"> sent a scam link"
+    #     with open("messages.log", "a", encoding="utf8") as text_file:
+    #         print(log, file=text_file)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-    for i in message.attachments:
-        dodgy_files = [".exe", ".bat", ".vbs", ".jar", ".apk", ".app"]
-        if any(keyword in message.content.lower() for keyword in dodgy_files):
-            print(i)
-            await message.delete()
-            warn = ":warning:" + message.author.mention + " please don't send executable files."
-            await message.channel.send(warn)
-            modlog = bot.get_channel(897765157940396052)
-            description = f"{message.author.display_name} ({message.author.id}) sent an executable file.\n" \
-                          f"Their message: {str(i)}\n" \
-                          f":thinking: One of those <@&858547638719086613> folk should check what's going on"
-            embed = discord.Embed(title="Executable Deleted", description=description)
-            embed.set_author(name=message.author.display_name,
-                              icon_url=message.author.avatar_url)
-            embed.set_thumbnail(
-                url="https://icon-library.com/images/exe-icon/exe-icon-2.jpg")
-            await modlog.send(embed=embed)
-            return
-        else:
-            virus_client = vt.Client(config("virus_api"))
-            await message.add_reaction("❓")
-            data = {'url': str(i)}
-            api_url = 'https://www.virustotal.com/api/v3/urls'
-            headers = {'x-apikey': config("virus_api")}
-            response = requests.post(api_url, headers=headers, data=data)
-            print(response)
-            if response.status_code == 200:
-                await message.clear_reactions()
-                await message.add_reaction("⏳") # hourglass
-                att_url = str(i)
-                try:
-                    id_url = vt.url_id(att_url)
-                    result = await virus_client.get_object_async(f"/urls/{id_url}")
-                    print(result)
-                    await message.channel.send(result.last_analysis_stats)
-                    await message.clear_reactions()
-                    await message.add_reaction("🤔") # thinking
-                except:
-                    await message.clear_reactions()
-                    await message.add_reaction("❌") # X
-                    await message.reply(":thinking: I ran into an error checking this for viruses. Proceed with caution")
+    # for i in message.attachments:
+    #     media_files = [".jpg", ".png", ".jpeg", ".mp3", ".mp4", ".avi", ".mkv", ".ico", ".bmp", ".gif", ".doc",
+    #                    ".docx", ".log", ".txt", ".yml", ".csv", ".wav", ".svg", ".pdf"]
+    #     if any(keyword in message.content.lower() for keyword in media_files):
+    #         await message.clear_reactions()
+    #         await message.add_reaction("📷")  # camera
+    #         return # we don't care about media
+    #     dodgy_files = [".exe", ".bat", ".vbs", ".jar", ".apk", ".app"]
+    #     if any(keyword in message.content.lower() for keyword in dodgy_files):
+    #         print(i)
+    #         await message.delete()
+    #         warn = ":warning:" + message.author.mention + " please don't send executable files."
+    #         await message.channel.send(warn)
+    #         modlog = bot.get_channel(897765157940396052)
+    #         description = f"{message.author.display_name} ({message.author.id}) sent an executable file.\n" \
+    #                       f"Their message: {str(i)}\n" \
+    #                       f":thinking: One of those <@&858547638719086613> folk should check what's going on"
+    #         embed = discord.Embed(title="Executable Deleted", description=description)
+    #         embed.set_author(name=message.author.display_name,
+    #                           icon_url=message.author.avatar_url)
+    #         embed.set_thumbnail(
+    #             url="https://icon-library.com/images/exe-icon/exe-icon-2.jpg")
+    #         await modlog.send(embed=embed)
+    #         return
+    #     else:
+    #         virus_client = vt.Client(config("virus_api"))
+    #         await message.add_reaction("❓")
+            # try:
+            #     analysis = await virus_client.scan_url_async(str(i))
+            #     await message.clear_reactions()
+            #     await message.add_reaction("⏳") # hourglass
+            #     att_url = str(i)
+            #     id_url = vt.url_id(att_url)
+            #     result = await virus_client.get_object_async(f"/urls/{id_url}")
+            #     print(result)
+            #     await message.channel.send(str(result.last_analysis_stats).replace('\'', '').replace('{', '').replace('}', '').replace(',', '\n'))
+            #     print(result.last_analysis_stats)
+            #     await message.clear_reactions()
+            #     await message.add_reaction("🤔") # thinking
+            # except:
+            #     await message.clear_reactions()
+            #     await message.add_reaction("❌") # X
+            #     await message.reply(":thinking: I ran into an error checking this for viruses. Proceed with caution")
+
+
+
+            # data = {'url': str(i)}
+            # api_url = 'https://www.virustotal.com/api/v3/urls'
+            # headers = {'x-apikey': config("virus_api")}
+            # response = requests.post(api_url, headers=headers, data=data)
+            # print(response)
+            # if response.status_code == 200:
+            #     await message.clear_reactions()
+            #     await message.add_reaction("⏳") # hourglass
+            #     att_url = str(i)
+            #     id_url = vt.url_id(att_url)
+            #     result = await virus_client.get_object_async(f"/urls/{id_url}")
+            #     print(result)
+            #     await message.channel.send(str(result.last_analysis_stats).replace('\'', '').replace('{', '').replace('}', '').replace(',', '\n'))
+            #     print(result.last_analysis_stats)
+            #     await message.clear_reactions()
+            #     await message.add_reaction("🤔") # thinking
+                # except:
+                #     print(result)
+                #     await message.channel.send(str(result.last_analysis_stats).replace('\'', '').replace('{', '').replace('}', '').replace(',', '\n'))
+                #     print(result.last_analysis_stats)
+                #     await message.clear_reactions()
+                #     await message.add_reaction("❌") # X
+                #     await message.reply(":thinking: I ran into an error checking this for viruses. Proceed with caution")
 
     log = f"<p class=\"time\">[{st}] <span class=\"channel\">in {message.channel.name} <span class=\"name\">{message.author.display_name} ({message.author.id}) sent: <p class=\"white\">{message.content}"
 
@@ -270,7 +307,7 @@ async def list(ctx: SlashContext, role: discord.Role):
     description = str(sorted(usernames,
                              key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
     embed = discord.Embed(description=title + "\n" + description, color=role.color)
-    embed.set_footer(text=f"Issued by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
+    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send(embed=embed)
     ts = time.time()
     st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
@@ -349,7 +386,7 @@ async def on_member_join(member):
             await member.add_roles(role)
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"<p class=\"time\">[{st}] <span class=\"name\">{member.author.display_name} ({member.author.id}) <span class=\"white\">joined"
+        log = f"<p class=\"time\">[{st}] <span class=\"name\">{member.display_name} ({member.id}) <span class=\"white\">joined"
 
         with open("messages.log", "a", encoding="utf8") as text_file:
             print(log, file=text_file)
@@ -368,7 +405,7 @@ async def on_member_remove(member):
             await channel.send(embed=embed)
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
-        log = f"<p class=\"time\">[{st}] <span class=\"name\">{member.author.display_name} ({member.author.id}) <span class=\"white\">left"
+        log = f"<p class=\"time\">[{st}] <span class=\"name\">{member.display_name} ({member.id}) <span class=\"white\">left"
 
         with open("messages.log", "a", encoding="utf8") as text_file:
             print(log, file=text_file)
@@ -564,7 +601,7 @@ async def whitelist(ctx: SlashContext, member: discord.Member):
     message = f"Added {member.mention} to the whitelist"
     embed = discord.Embed(description=message, color=ctx.author.color)
     embed.set_footer(text=f"Whitelisted by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
-    embed.set_author(name=":clipboard:")
+    embed.set_author(name="📋 User added to whitelist")
     await channel.send(embed=embed)
     await ctx.send(embed=embed, hidden=True)
     ts = time.time()
@@ -1182,6 +1219,26 @@ async def ping(ctx):
 @bot.command()
 async def ping(ctx):
     await ctx.send(f'My ping is {round((bot.latency * 1000), 3)} ms!')
+
+
+@slash.slash(name="doggo",
+             guild_ids=guilds,
+             description="Sends a photo of a doggo")
+async def doggo(ctx: Context):
+    f = r"https://random.dog/woof.json"
+    page = requests.get(f)
+    data = json.loads(page.text)
+    await ctx.send(data["url"])
+
+
+@slash.slash(name="catto",
+             guild_ids=guilds,
+             description="Sends a photo of a catto")
+async def catto(ctx: Context):
+    f = r"https://aws.random.cat/meow"
+    page = requests.get(f)
+    data = json.loads(page.text)
+    await ctx.send(data["file"])
 
 
 @slash.slash(name="kill",

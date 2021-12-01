@@ -619,10 +619,10 @@ async def whitelist(ctx, member: discord.Member):
     channel = bot.get_channel(869280855657447445)
     role = discord.utils.get(member.guild.roles, id=899568696593367070)
     await member.add_roles(role)
-    message = "Added {member.display_name} to the whitelist"
-    embed = discord.Embed(description=message, color=ctx.message.author.color)
+    message = f"Added {member.mention} to the whitelist"
+    embed = discord.Embed(description=message, color=ctx.author.color)
     embed.set_footer(text=f"Whitelisted by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
-    embed.set_author(name=":clipboard:")
+    embed.set_author(name="📋 User added to whitelist")
     await channel.send(embed=embed)
 
 

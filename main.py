@@ -372,6 +372,13 @@ async def on_member_join(member):
         if member.bot:
             return
         else:
+            mod_log = bot.get_channel(897765157940396052)
+            title = f"{member.display_name} joined the server"
+            embed = discord.Embed(title=title, color=discord.Color.green())
+            embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}", icon_url=member.avatar_url)
+            date_format = "%a, %d %b %Y %I:%M %p"
+            embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
+            await mod_log.send(embed=embed)
             channel = bot.get_channel(858547359804555267)
             title = "Welcome to Prism SMP!"
             description = "Please look at the <#861317568807829535> when you have a minute.\n\n" \
@@ -402,6 +409,12 @@ async def on_member_remove(member):
             title = f"{member.display_name} left the server"
             embed = discord.Embed(title=title, color=discord.Color.red())
             embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}", icon_url=member.avatar_url)
+            date_format = "%a, %d %b %Y %I:%M %p"
+            embed.set_author(name=str(member), icon_url=member.avatar_url)
+            embed.set_thumbnail(url=member.avatar_url)
+            embed.add_field(name="Joined Server", value=member.joined_at.strftime(date_format), inline=False)
+            embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
+            embed.set_footer(text='ID: ' + str(member.id))
             await channel.send(embed=embed)
         ts = time.time()
         st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
@@ -1221,6 +1234,54 @@ async def ping(ctx):
     await ctx.send(f'My ping is {round((bot.latency * 1000), 3)} ms!')
 
 
+@slash.slash(name="whois",
+             guild_ids=guilds,
+             description="Shows some info on users",
+             options=[
+                 create_option(
+                     name="user",
+                     description="The user to lookup",
+                     option_type=option_type["user"],
+                     required=False
+                 )]
+             )
+async def whois(ctx: Context, *, user: discord.Member = None):
+    if user is None:
+        user = ctx.author
+    date_format = "%a, %d %b %Y %I:%M %p"
+    embed = discord.Embed(color=0xFF0000, description=user.mention)
+    embed.set_author(name=str(user), icon_url=user.avatar_url)
+    embed.set_thumbnail(url=user.avatar_url)
+    embed.add_field(name="Joined Server", value=user.joined_at.strftime(date_format), inline=False)
+    members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
+    embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
+    embed.add_field(name="Joined Discord", value=user.created_at.strftime(date_format), inline=False)
+    if len(user.roles) > 1:
+        role_string = ' '.join([r.mention for r in user.roles][1:])
+        embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
+    embed.set_footer(text='ID: ' + str(user.id))
+    return await ctx.send(embed=embed)
+
+
+@bot.command()
+async def whois(ctx, *, user: discord.Member = None):
+    if user is None:
+        user = ctx.author
+    date_format = "%a, %d %b %Y %I:%M %p"
+    embed = discord.Embed(color=0xFF0000, description=user.mention)
+    embed.set_author(name=str(user), icon_url=user.avatar_url)
+    embed.set_thumbnail(url=user.avatar_url)
+    embed.add_field(name="Joined Server", value=user.joined_at.strftime(date_format), inline=False)
+    members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
+    embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
+    embed.add_field(name="Joined Discord", value=user.created_at.strftime(date_format), inline=False)
+    if len(user.roles) > 1:
+        role_string = ' '.join([r.mention for r in user.roles][1:])
+        embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
+    embed.set_footer(text='ID: ' + str(user.id))
+    return await ctx.send(embed=embed)
+
+
 @slash.slash(name="doggo",
              guild_ids=guilds,
              description="Sends a photo of a doggo")
@@ -1241,6 +1302,10 @@ async def catto(ctx: Context):
     await ctx.send(data["file"])
 
 
+@bot.command(name='load', pass_context=True)
+async def load(ctx):
+    await ctx.message.add_reaction('🔒')
+
 @bot.command(name='auth', pass_context=True)
 async def auth(ctx, message):
     ts = time.time()
@@ -1252,6 +1317,7 @@ async def auth(ctx, message):
         if "status=OK" in page.text:
             await ctx.message.add_reaction('🔓')
             log = f"<p class=\"white\">Authenticated"
+
             with open("messages.log", "a", encoding="utf8") as text_file:
                 print(log, file=text_file)
         elif "status=REPLAYED_REQUEST" in page.text:

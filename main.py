@@ -1243,20 +1243,36 @@ async def catto(ctx: Context):
 
 @bot.command(name='auth', pass_context=True)
 async def auth(ctx, message):
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
     nonce = "SuperSecretNonce"
     f = f"https://api2.yubico.com/wsapi/2.0/verify?id=1&otp={message}&nonce={nonce}"
     page = requests.get(f)
-    #data = json.loads(page.text)
-    print(f)
-    print(message, nonce)
-    if "status=OK" in page.text:
-        await ctx.send(":unlock: Successfully authenticated")
-    elif "status=REPLAYED_REQUEST" in page.text:
-        await ctx.send("That OTP has already been used")
-    elif "status=BAD_OTP" in page.text:
-        await ctx.send("That is a malformed OTP")
+    if nonce in page.text:
+        if "status=OK" in page.text:
+            await ctx.message.add_reaction('🔓')
+            log = f"<p class=\"white\">Authenticated"
+            with open("messages.log", "a", encoding="utf8") as text_file:
+                print(log, file=text_file)
+        elif "status=REPLAYED_REQUEST" in page.text:
+            await ctx.message.add_reaction('❌')
+            log = f"<p class=\"white\">Replayed OTP"
+            with open("messages.log", "a", encoding="utf8") as text_file:
+                print(log, file=text_file)
+        elif "status=BAD_OTP" in page.text:
+            await ctx.message.add_reaction('❌')
+            log = f"<p class=\"white\">OTP was invalid"
+            with open("messages.log", "a", encoding="utf8") as text_file:
+                print(log, file=text_file)
+        else:
+            log = f"<p class=\"white\">Recieved an invalid nonce"
+            with open("messages.log", "a", encoding="utf8") as text_file:
+                print(log, file=text_file)
+            return
     else:
-        return
+        await ctx.send("Something funky is going on")
+
+
 @slash.slash(name="kill",
              guild_ids=guilds,
              description="Kills Prism Bot")

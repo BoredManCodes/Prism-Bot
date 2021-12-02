@@ -1241,6 +1241,22 @@ async def catto(ctx: Context):
     await ctx.send(data["file"])
 
 
+@bot.command(name='auth', pass_context=True)
+async def auth(ctx, message):
+    nonce = "SuperSecretNonce"
+    f = f"https://api2.yubico.com/wsapi/2.0/verify?id=1&otp={message}&nonce={nonce}"
+    page = requests.get(f)
+    #data = json.loads(page.text)
+    print(f)
+    print(message, nonce)
+    if "status=OK" in page.text:
+        await ctx.send(":unlock: Successfully authenticated")
+    elif "status=REPLAYED_REQUEST" in page.text:
+        await ctx.send("That OTP has already been used")
+    elif "status=BAD_OTP" in page.text:
+        await ctx.send("That is a malformed OTP")
+    else:
+        return
 @slash.slash(name="kill",
              guild_ids=guilds,
              description="Kills Prism Bot")

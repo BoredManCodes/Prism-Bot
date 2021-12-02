@@ -152,6 +152,10 @@ async def on_message(message):
     if "https://discord.gift/" in message.content.lower():
         await message.channel.send(":warning: FREE NITRO! :warning:\nThis link appears to be legitimate :D")
         return
+    if not message.guild:
+        if not message.author == bot.user:
+            mod_log = bot.get_channel(897765157940396052)
+            await mod_log.send(f"{message.author.display_name} sent me a message: {message.content}")
     # links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
     # filtered_links = []
     # for link in links:

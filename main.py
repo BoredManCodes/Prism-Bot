@@ -1,7 +1,11 @@
 import asyncio
 import hashlib
 from datetime import datetime
+from urllib import parse, request
+
+import aiohttp
 import discord.ext
+from discord import Webhook, AsyncWebhookAdapter
 from discord.ext import commands
 from decouple import config
 from discord_slash import SlashCommand, SlashContext, ComponentContext
@@ -147,6 +151,20 @@ async def scamlist(ctx):
 
 @bot.event
 async def on_message(message):
+    ts = time.time()
+    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
+    blacklist_channels = [907718985343197194]
+    if message.channel.id in blacklist_channels:
+        return
+    else:
+        async with aiohttp.ClientSession() as session:
+            webhook = Webhook.from_url(
+                'https://canary.discord.com/api/webhooks/907719076007276584/3q9vN9bsEDGP99jjsX_26NvIyCVas5G246ylXvIoV015cdPCxKTJ-o8zsSXZjG6pdFYk',
+                adapter=AsyncWebhookAdapter(session))
+            await webhook.send(
+                f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {message.content}",
+                username=message.author.display_name, avatar_url=message.author.avatar_url)
+
     if message.author == bot.user:
         return
     if "https://discord.gift/" in message.content.lower():
@@ -155,7 +173,21 @@ async def on_message(message):
     if not message.guild:
         if not message.author == bot.user:
             mod_log = bot.get_channel(897765157940396052)
-            await mod_log.send(f"{message.author.display_name} sent me a message: {message.content}")
+            message_filtered = str(message.content).replace('www', '').replace('http', '')
+            url = 'https://neutrinoapi.net/bad-word-filter'
+            params = {
+                'user-id': 'BoredManSwears',
+                'api-key': config("NaughtyBoy_key"),
+                'content': message_filtered,
+                'censor-character': '•',
+                'catalog': 'strict'
+            }
+            postdata = parse.urlencode(params).encode()
+            req = request.Request(url, data=postdata)
+            response = request.urlopen(req)
+            result = json.loads(response.read().decode("utf-8"))
+            print(message.content)
+            await mod_log.send(f"{message.author.display_name} sent me a message: {result['censored-content']}")
     # links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
     # filtered_links = []
     # for link in links:
@@ -182,8 +214,6 @@ async def on_message(message):
     #     log = f"<p class=\"time\">[{st}] <span class=\"channel\">in {message.channel.name} <span class=\"name\">{message.author.display_name} ({message.author.id})<span class=\"channel\"> sent a scam link"
     #     with open("messages.log", "a", encoding="utf8") as text_file:
     #         print(log, file=text_file)
-    ts = time.time()
-    st = datetime.fromtimestamp(ts).strftime('%d-%m-%Y %H:%M:%S')
     # for i in message.attachments:
     #     media_files = [".jpg", ".png", ".jpeg", ".mp3", ".mp4", ".avi", ".mkv", ".ico", ".bmp", ".gif", ".doc",
     #                    ".docx", ".log", ".txt", ".yml", ".csv", ".wav", ".svg", ".pdf"]
@@ -684,30 +714,6 @@ async def embed(ctx: SlashContext, *, embedlink, title, description, silent):
 
     with open("messages.log", "a", encoding="utf8") as text_file:
         print(log, file=text_file)
-
-
-# Ping logger, currently disabled but working
-# @bot.event
-# async def on_message(message):
-#    blacklist_guilds = [858547359804555264]
-#    blacklist_channels = [900307948969025576]
-#    if message.guild.id in blacklist_guilds or message.channel.id in blacklist_channels:
-#        return
-#    else:
-#        if message.mentions:
-#            if not message.author.bot:
-#                for i in message.mentions:
-#                    mention = str(i)
-#                    no_ping = str(message.content).replace('<@', '\<@')
-#                    if '\<@' in no_ping:
-#                        content = str("Mentioning: " + mention + "\nMessage: " + no_ping)
-#                    else:
-#                        content = str("Replying to: " + mention + "\nMessage: " + no_ping)
-#                    async with aiohttp.ClientSession() as session:
-#                        webhook = Webhook.from_url('https://canary.discord.com/api/webhooks/907719076007276584/3q9vN9bsEDGP99jjsX_26NvIyCVas5G246ylXvIoV015cdPCxKTJ-o8zsSXZjG6pdFYk', adapter=AsyncWebhookAdapter(session))
-#                        await webhook.send(content, username=message.author.display_name, avatar_url=message.author.avatar_url)
-#        else:
-#            return
 
 
 def jsondump(v: dict):
@@ -1317,30 +1323,69 @@ async def auth(ctx, message):
     nonce = "SuperSecretNonce"
     f = f"https://api2.yubico.com/wsapi/2.0/verify?id=1&otp={message}&nonce={nonce}"
     page = requests.get(f)
-    if nonce in page.text:
-        if "status=OK" in page.text:
-            await ctx.message.add_reaction('🔓')
-            log = f"<p class=\"white\">Authenticated"
+    if config('yubi_key') in message:
+        if nonce in page.text:
+            if "status=OK" in page.text:
+                await ctx.message.add_reaction('🔓')
+                log = f"<p class=\"white\">Authenticated"
 
-            with open("messages.log", "a", encoding="utf8") as text_file:
-                print(log, file=text_file)
-        elif "status=REPLAYED_REQUEST" in page.text:
-            await ctx.message.add_reaction('❌')
-            log = f"<p class=\"white\">Replayed OTP"
-            with open("messages.log", "a", encoding="utf8") as text_file:
-                print(log, file=text_file)
-        elif "status=BAD_OTP" in page.text:
-            await ctx.message.add_reaction('❌')
-            log = f"<p class=\"white\">OTP was invalid"
-            with open("messages.log", "a", encoding="utf8") as text_file:
-                print(log, file=text_file)
+                with open("messages.log", "a", encoding="utf8") as text_file:
+                    print(log, file=text_file)
+            elif "status=REPLAYED_REQUEST" in page.text:
+                await ctx.message.add_reaction('❌')
+                log = f"<p class=\"white\">Replayed OTP"
+                with open("messages.log", "a", encoding="utf8") as text_file:
+                    print(log, file=text_file)
+            elif "status=BAD_OTP" in page.text:
+                await ctx.message.add_reaction('❌')
+                log = f"<p class=\"white\">OTP was invalid"
+                with open("messages.log", "a", encoding="utf8") as text_file:
+                    print(log, file=text_file)
+            else:
+                log = f"<p class=\"white\">Recieved an invalid nonce"
+                with open("messages.log", "a", encoding="utf8") as text_file:
+                    print(log, file=text_file)
+                return
         else:
-            log = f"<p class=\"white\">Recieved an invalid nonce"
-            with open("messages.log", "a", encoding="utf8") as text_file:
-                print(log, file=text_file)
-            return
+            await ctx.send("Something funky is going on")
     else:
         await ctx.send("Something funky is going on")
+
+
+@slash.slash(name="arrest",
+             guild_ids=guilds,
+             description="Arrests a member",
+             options=[
+                 create_option(
+                     name="user",
+                     description="The user to arrest",
+                     option_type=option_type["user"],
+                     required=True
+                 ), create_option(
+                     name="reason",
+                     description="The reason for the arrest",
+                     option_type=option_type["string"],
+                     required=True
+                 )]
+             )
+@check(has_perms)
+async def arrest(ctx: SlashContext, user, reason):
+    await ctx.send(f"{user.mention} has been arrested. Please wait for the permissions to be changed", hidden=True)
+    mod_log = bot.get_channel(897765157940396052)
+    police_station = bot.get_channel(866304038524813352)
+    await police_station.purge(limit=int(10000))
+    for member in ctx.guild.members:
+        await police_station.set_permissions(member, send_messages=False, read_messages=False, reason="New arrest")
+    await police_station.set_permissions(user, send_messages=True, read_messages=True, reason=reason)
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Moderator"), send_messages=True, read_messages=True, reason=reason)
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Administrator"), send_messages=True, read_messages=True, reason=reason)
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Adjudicator"), send_messages=True, read_messages=True, reason=reason)
+
+    await mod_log.send(f'{ctx.author.display_name} cleared the <#866304038524813352> chat and arrested {user.display_name} for {reason}')
+    await police_station.send(f"{user.mention} you have been arrested by {ctx.author.mention} for {reason}. Please stand-by")
+
+
+
 
 
 @slash.slash(name="kill",

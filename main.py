@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 from datetime import datetime
 from urllib import parse, request
-
 import aiohttp
 import discord.ext
 from discord import Webhook, AsyncWebhookAdapter
@@ -59,10 +58,19 @@ async def has_perms(ctx):
     for b in ctx.author.roles:
         if b.id in RJD["perms"]:
             return True
+
+    try:
+        name = ctx.message.author.display_name
+    except AttributeError:
+        name = ctx.author.display_name
+    try:
+        icon = ctx.message.author.avatar_url
+    except AttributeError:
+        icon = ctx.author.avatar_url
     embed = discord.Embed(title="We ran into an error",
                           description="You don't have permissions to manage this bot's functions",
                           color=discord.Color.red())
-    embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
+    embed.set_footer(text=f"Caused by {name}", icon_url=icon)
     await ctx.send(embed=embed)
     return False
 
@@ -186,8 +194,13 @@ async def on_message(message):
             req = request.Request(url, data=postdata)
             response = request.urlopen(req)
             result = json.loads(response.read().decode("utf-8"))
-            print(message.content)
-            await mod_log.send(f"{message.author.display_name} sent me a message: {result['censored-content']}")
+            async with aiohttp.ClientSession() as session:
+                webhook = Webhook.from_url(
+                    'https://canary.discord.com/api/webhooks/916884522073739294/pVsaF9DgotGz82NfvXQwyu56PKwYyzbyLI23eE4UGnHPVcI1a4jqCvG2OguDI0dfFwL5',
+                    adapter=AsyncWebhookAdapter(session))
+                await webhook.send(
+                    f"{result['censored-content']}",
+                    username=f"{message.author.display_name} in DM", avatar_url=message.author.avatar_url)
     # links = genfromtxt('scamlist.json', delimiter=',', skip_header=False, dtype=None, encoding="utf8")
     # filtered_links = []
     # for link in links:
@@ -375,19 +388,27 @@ async def buttontest(ctx):
 @bot.event
 async def on_command_error(ctx, error):
     print(error)
+    try:
+        name = ctx.message.author.display_name
+    except AttributeError:
+        name = ctx.author.display_name
+    try:
+        icon = ctx.message.author.avatar_url
+    except AttributeError:
+        icon = ctx.author.avatar_url
     if isinstance(error, commands.errors.CheckFailure):
         embed = discord.Embed(title="We ran into an error", description="You are not staff", color=discord.Color.red())
-        embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
+        embed.set_footer(text=f"Caused by {name}", icon_url=icon)
         await ctx.send(embed=embed)
     elif isinstance(error, commands.errors.MissingRequiredArgument):
         embed = discord.Embed(title="We ran into an error", description="You forgot to define something",
                               color=discord.Color.red())
-        embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
+        embed.set_footer(text=f"Caused by {name}", icon_url=icon)
         await ctx.send(embed=embed)
     elif isinstance(error, commands.errors.BotMissingPermissions):
         embed = discord.Embed(title="We ran into an error", description="I am missing permissions",
                               color=discord.Color.red())
-        embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
+        embed.set_footer(text=f"Caused by {name}", icon_url=icon)
         await ctx.send(embed=embed)
     elif isinstance(error, commands.errors.CommandNotFound):
         try:
@@ -396,7 +417,7 @@ async def on_command_error(ctx, error):
             return
     else:
         embed = discord.Embed(title="We ran into an undefined error", description=error, color=discord.Color.red())
-        embed.set_footer(text=f"Caused by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
+        embed.set_footer(text=f"Caused by {name}", icon_url=icon)
         await ctx.send(embed=embed)
 
 
@@ -561,8 +582,9 @@ async def staff(ctx):
            "`/suggestion view` A nifty menu for viewing suggestions\n" \
            "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n" \
            "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n" \
-           "`/whitelist <user>` Whitelists the user"
-    embed = discord.Embed(title="Bolte:tm: Command Help", description=help, color=ctx.author.color)
+           "`/whitelist <mention discord user>` Whitelists the user\n" \
+           "'/arrest <user> <reason>` Arrests the user\n`/release <user> <reason>` Releases the user from police custody"
+    embed = discord.Embed(title="Prism Bot Command Help", description=help, color=ctx.author.color)
     embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send(embed=embed)
     ts = time.time()
@@ -582,7 +604,8 @@ async def staff(ctx: SlashContext):
            "`/suggestion view` A nifty menu for viewing suggestions\n" \
            "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n" \
            "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n" \
-           "`$whitelist <mention discord user>` Whitelists the user"
+           "`/whitelist <mention discord user>` Whitelists the user\n" \
+           "'/arrest <user> <reason>` Arrests the user\n`/release <user> <reason>` Releases the user from police custody"
     embed = discord.Embed(title="Prism Bot Command Help", description=help, color=ctx.message.author.color)
     embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send(embed=embed)
@@ -1370,9 +1393,11 @@ async def auth(ctx, message):
              )
 @check(has_perms)
 async def arrest(ctx: SlashContext, user, reason):
-    await ctx.send(f"{user.mention} has been arrested. Please wait for the permissions to be changed", hidden=True)
+    await ctx.send(f"{user.mention} has been arrested. Please wait for the permissions to be changed\n This shouldn't be more than a minute", hidden=True)
     mod_log = bot.get_channel(897765157940396052)
     police_station = bot.get_channel(866304038524813352)
+    role = discord.utils.get(ctx.guild.roles, name='Whitelisted')
+    await user.remove_roles(role)
     await police_station.purge(limit=int(10000))
     for member in ctx.guild.members:
         await police_station.set_permissions(member, send_messages=False, read_messages=False, reason="New arrest")
@@ -1385,6 +1410,34 @@ async def arrest(ctx: SlashContext, user, reason):
     await police_station.send(f"{user.mention} you have been arrested by {ctx.author.mention} for {reason}. Please stand-by")
 
 
+@slash.slash(name="release",
+             guild_ids=guilds,
+             description="Releases a member from police custody",
+             options=[
+                 create_option(
+                     name="user",
+                     description="The user to release",
+                     option_type=option_type["user"],
+                     required=True
+                 ), create_option(
+                     name="reason",
+                     description="The reason for releasing",
+                     option_type=option_type["string"],
+                     required=True
+                 )]
+             )
+@check(has_perms)
+async def release(ctx: SlashContext, user, reason):
+    await ctx.send(f"{user.mention} has been released")
+    sentences_log = bot.get_channel(875356199174938644)
+    police_station = bot.get_channel(866304038524813352)
+    await sentences_log.send(f'{ctx.author.display_name} released {user.display_name} from police custody for {reason}\n'
+                             f'{ctx.author.mention} please don\'t forget to fill out the sentence here')
+    for member in ctx.guild.members:
+        await police_station.set_permissions(member, send_messages=False, read_messages=False, reason="Prisoner released")
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Moderator"), send_messages=True, read_messages=True, reason=reason)
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Administrator"), send_messages=True, read_messages=True, reason=reason)
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Adjudicator"), send_messages=True, read_messages=True, reason=reason)
 
 
 

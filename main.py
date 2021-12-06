@@ -61,11 +61,11 @@ async def has_perms(ctx):
 
     try:
         name = ctx.message.author.display_name
-    except AttributeError:
+    except:
         name = ctx.author.display_name
     try:
         icon = ctx.message.author.avatar_url
-    except AttributeError:
+    except:
         icon = ctx.author.avatar_url
     embed = discord.Embed(title="We ran into an error",
                           description="You don't have permissions to manage this bot's functions",

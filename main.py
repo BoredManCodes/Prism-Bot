@@ -1495,12 +1495,15 @@ async def arrest(ctx: SlashContext, user, reason):
     await ctx.send(f"{user.mention} has been arrested. Please wait for the permissions to be changed\n This shouldn't be more than a minute", hidden=True)
     mod_log = bot.get_channel(897765157940396052)
     police_station = bot.get_channel(866304038524813352)
-    role = discord.utils.get(ctx.guild.roles, name='Whitelisted')
-    await user.remove_roles(role)
-    await police_station.purge(limit=int(10000))
+    whitelist = discord.utils.get(ctx.guild.roles, name='Whitelisted')
+    await user.remove_roles(whitelist)
+    arrestee = discord.utils.get(ctx.guild.roles, name='Arrestee')
     for member in ctx.guild.members:
-        await police_station.set_permissions(member, send_messages=False, read_messages=False, reason="New arrest")
-    await police_station.set_permissions(user, send_messages=True, read_messages=True, reason=reason)
+        if arrestee in member.roles:
+            member.remove_roles(arrestee)
+    await user.add_roles(arrestee)
+    await police_station.purge(limit=int(10000))
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Arrestee"), send_messages=True, read_messages=True, reason=reason)
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Moderator"), send_messages=True, read_messages=True, reason=reason)
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Administrator"), send_messages=True, read_messages=True, reason=reason)
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Adjudicator"), send_messages=True, read_messages=True, reason=reason)
@@ -1532,9 +1535,9 @@ async def release(ctx: SlashContext, user, reason):
     police_station = bot.get_channel(866304038524813352)
     await sentences_log.send(f'{ctx.author.display_name} released {user.display_name} from police custody for {reason}\n'
                              f'{ctx.author.mention} please don\'t forget to fill out the sentence here')
-    for member in ctx.guild.members:
-        await member.remove_roles()
-        await police_station.set_permissions(member, send_messages=False, read_messages=False, reason="Prisoner released")
+    arrestee = discord.utils.get(ctx.guild.roles, name='Arrestee')
+    await user.remove_roles(arrestee)
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Arrestee"), send_messages=False, read_messages=False, reason=reason)
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Moderator"), send_messages=True, read_messages=True, reason=reason)
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Administrator"), send_messages=True, read_messages=True, reason=reason)
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Adjudicator"), send_messages=True, read_messages=True, reason=reason)

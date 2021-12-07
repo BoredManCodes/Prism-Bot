@@ -24,6 +24,7 @@ import sys
 
 intents = discord.Intents.default()
 intents.members = True
+intents.presences = True
 bot = commands.Bot(command_prefix='$', intents=intents, case_insensitive=True)
 bot.remove_command('help')
 toe_ken = config('TOKEN')
@@ -1280,15 +1281,64 @@ async def ping(ctx):
              )
 async def whois(ctx: Context, *, user: discord.Member = None):
     if user is None:
-        user = ctx.author
+        user = ctx.guild.get_member(ctx.author.id)
+    if user.activities: #check if the user has an activity
+        if str(user.activities[0].type) == "ActivityType.playing":
+            activity = "Playing:"
+        elif str(user.activities[0].type) == "ActivityType.streaming":
+            activity = "Streaming:"
+        elif str(user.activities[0].type) == "ActivityType.listening":
+            activity = "Listening to:"
+        elif str(user.activities[0].type) == "ActivityType.watching":
+            activity = "Watching"
+        elif str(user.activities[0].type) == "ActivityType.custom":
+            activity = ""
+        elif str(user.activities[0].type) == "ActivityType.competing":
+            activity = "Competing in:"
+        else:
+            activity = "Funkiness"
+        has_activity = True
+    else: #if they don't we can't use reference it
+        has_activity = False
+    if user.status.name == "online":
+        statusemoji = "\N{LARGE GREEN CIRCLE}"
+        status = "Online"
+    elif user.status.name == "offline":
+        statusemoji = "\N{MEDIUM WHITE CIRCLE}\N{VARIATION SELECTOR-16}"
+        status = "Offline"
+    elif user.status.name == "dnd":
+        statusemoji = "\N{LARGE RED CIRCLE}"
+        status = "Do not disturb"
+    elif user.status.name == "idle":
+        statusemoji = "\N{LARGE ORANGE CIRCLE}"
+        status = "Idling"
+    else: #just in case some funky shit is going on
+        statusemoji = "\N{LARGE PURPLE CIRCLE}"
+        status = ""
     date_format = "%a, %d %b %Y %I:%M %p"
-    embed = discord.Embed(color=0xFF0000, description=user.mention)
+    top_role = user.roles[-1] # first element in roles is `@everyone` and last is top role
+    embed = discord.Embed(color=top_role.color, description=user.mention)
     embed.set_author(name=str(user), icon_url=user.avatar_url)
     embed.set_thumbnail(url=user.avatar_url)
-    embed.add_field(name="Joined Server", value=user.joined_at.strftime(date_format), inline=False)
+    embed.add_field(name="Current Status", value=f"{statusemoji} | {status}", inline=False)
+    if has_activity:
+        try:
+            if str(user.activities[0].details) == "None":
+                embed.add_field(name="Current Activity",
+                                value=f"{activity} {user.activities[0].name}", inline=False)
+            else:
+                embed.add_field(name="Current Activity",
+                                value=f"{activity} {user.activities[0].name} | {user.activities[0].details}", inline=False)
+        except:
+            embed.add_field(name="Current Activity",
+                            value=f"{activity} {user.activities[0].name}", inline=False)
+    joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
+    discord_joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
+
+    embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
     members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
     embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
-    embed.add_field(name="Joined Discord", value=user.created_at.strftime(date_format), inline=False)
+    embed.add_field(name="Joined Discord", value=f"<t:{discord_joined_time[0]}:R>", inline=False)
     if len(user.roles) > 1:
         role_string = ' '.join([r.mention for r in user.roles][1:])
         embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
@@ -1299,15 +1349,64 @@ async def whois(ctx: Context, *, user: discord.Member = None):
 @bot.command()
 async def whois(ctx, *, user: discord.Member = None):
     if user is None:
-        user = ctx.author
+        user = ctx.guild.get_member(ctx.author.id)
+    if user.activities: #check if the user has an activity
+        if str(user.activities[0].type) == "ActivityType.playing":
+            activity = "Playing:"
+        elif str(user.activities[0].type) == "ActivityType.streaming":
+            activity = "Streaming:"
+        elif str(user.activities[0].type) == "ActivityType.listening":
+            activity = "Listening to:"
+        elif str(user.activities[0].type) == "ActivityType.watching":
+            activity = "Watching"
+        elif str(user.activities[0].type) == "ActivityType.custom":
+            activity = ""
+        elif str(user.activities[0].type) == "ActivityType.competing":
+            activity = "Competing in:"
+        else:
+            activity = "Funkiness"
+        has_activity = True
+    else: #if they don't we can't use reference it
+        has_activity = False
+    if user.status.name == "online":
+        statusemoji = "\N{LARGE GREEN CIRCLE}"
+        status = "Online"
+    elif user.status.name == "offline":
+        statusemoji = "\N{MEDIUM WHITE CIRCLE}\N{VARIATION SELECTOR-16}"
+        status = "Offline"
+    elif user.status.name == "dnd":
+        statusemoji = "\N{LARGE RED CIRCLE}"
+        status = "Do not disturb"
+    elif user.status.name == "idle":
+        statusemoji = "\N{LARGE ORANGE CIRCLE}"
+        status = "Idling"
+    else: #just in case some funky shit is going on
+        statusemoji = "\N{LARGE PURPLE CIRCLE}"
+        status = ""
     date_format = "%a, %d %b %Y %I:%M %p"
-    embed = discord.Embed(color=0xFF0000, description=user.mention)
+    top_role = user.roles[-1] # first element in roles is `@everyone` and last is top role
+    embed = discord.Embed(color=top_role.color, description=user.mention)
     embed.set_author(name=str(user), icon_url=user.avatar_url)
     embed.set_thumbnail(url=user.avatar_url)
-    embed.add_field(name="Joined Server", value=user.joined_at.strftime(date_format), inline=False)
+    embed.add_field(name="Current Status", value=f"{statusemoji} | {status}", inline=False)
+    if has_activity:
+        try:
+            if str(user.activities[0].details) == "None":
+                embed.add_field(name="Current Activity",
+                                value=f"{activity} {user.activities[0].name}", inline=False)
+            else:
+                embed.add_field(name="Current Activity",
+                                value=f"{activity} {user.activities[0].name} | {user.activities[0].details}", inline=False)
+        except:
+            embed.add_field(name="Current Activity",
+                            value=f"{activity} {user.activities[0].name}", inline=False)
+    joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
+    discord_joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
+
+    embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
     members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
     embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
-    embed.add_field(name="Joined Discord", value=user.created_at.strftime(date_format), inline=False)
+    embed.add_field(name="Joined Discord", value=f"<t:{discord_joined_time[0]}:R>", inline=False)
     if len(user.roles) > 1:
         role_string = ' '.join([r.mention for r in user.roles][1:])
         embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
@@ -1434,6 +1533,7 @@ async def release(ctx: SlashContext, user, reason):
     await sentences_log.send(f'{ctx.author.display_name} released {user.display_name} from police custody for {reason}\n'
                              f'{ctx.author.mention} please don\'t forget to fill out the sentence here')
     for member in ctx.guild.members:
+        await member.remove_roles()
         await police_station.set_permissions(member, send_messages=False, read_messages=False, reason="Prisoner released")
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Moderator"), send_messages=True, read_messages=True, reason=reason)
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Administrator"), send_messages=True, read_messages=True, reason=reason)

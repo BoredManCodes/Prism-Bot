@@ -2,7 +2,7 @@
 from urllib import parse, request
 import aiohttp
 import discord.ext
-from discord import Webhook, AsyncWebhookAdapter
+from discord import Webhook, AsyncWebhookAdapter, File
 from discord.ext import commands
 from decouple import config
 from discord_slash import SlashCommand, SlashContext, ComponentContext
@@ -25,8 +25,8 @@ from discord.ext import commands, tasks
 from dpytools.menus import multichoice
 from dpytools.parsers import to_timedelta, Trimmer
 from requests import PreparedRequest
-
-from database import db
+from PIL import Image, ImageDraw, ImageFont
+import io
 
 # Setup the bot
 intents = discord.Intents.default()
@@ -372,6 +372,24 @@ async def on_member_join(member):
             await mod_log.send(embed=embed)
             # Send the welcome message
             channel = bot.get_channel(858547359804555267)
+            embed = discord.Embed(colour=discord.Colour.green())
+            req = PreparedRequest()
+            req.prepare_url(
+                url='https://api.xzusfin.repl.co/card?',
+                params={
+                    'avatar': str(member.avatar_url_as(format='png')),
+                    'middle': 'everybody welcome',
+                    'name': str(member.name),
+                    'bottom': str('to ' + member.guild.name),
+                    'text': '#CCCCCC',
+                    'avatarborder': '#CCCCCC',
+                    'avatarbackground': '#CCCCCC',
+                    'background': 'https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg?1540053395'
+                }
+            )
+            print(req.url)
+            embed.set_image(url=req.url)
+            await channel.send(embed=embed)
             title = "Welcome to Prism SMP!"
             description = "Please look at the <#861317568807829535> when you have a minute.\n\n" \
                           "You can grab some self roles over in <#861288424640348160>.\n" \
@@ -380,7 +398,7 @@ async def on_member_join(member):
                           " then ask in <#869280855657447445> to get yourself whitelisted."
             embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
             embed.set_footer(text=member.name, icon_url=member.avatar_url)
-            await channel.send(embed=embed)
+            await member.send(embed=embed)
             # Give the user the New Member role
             role = discord.utils.get(member.guild.roles, name='New Member')
             await member.add_roles(role)
@@ -1336,27 +1354,6 @@ async def whois(ctx, *, user: discord.Member = None):
     return await ctx.send(embed=embed)
 
 
-@bot.command()
-async def welcomeimg(ctx, member: discord.Member):
-    embed = discord.Embed(colour=discord.Colour.green())
-    req = PreparedRequest()
-    req.prepare_url(
-        url='https://api.xzusfin.repl.co/card?',
-        params={
-            'avatar': str(member.avatar_url_as(format='png')),
-            'middle': 'everybody welcome',
-            'name': str(member.name),
-            'bottom': str('to ' + member.guild.name),
-            'text': '#CCCCCC',
-            'avatarborder': '#CCCCCC',
-            'avatarbackground': '#CCCCCC',
-            'background': '#000000' #or image url
-        }
-    )
-    embed.set_image(url=req.url)
-    await ctx.send(embed=embed)
-
-
 @slash.slash(name="doggo",
              guild_ids=bot.guild_ids,
              description="Sends a photo of a doggo")
@@ -1375,11 +1372,6 @@ async def catto(ctx: Context):
     page = requests.get(f)
     data = json.loads(page.text)
     await ctx.send(data["file"])
-
-
-@bot.command(name='load', pass_context=True)
-async def load(ctx):
-    await ctx.message.add_reaction('🔒')
 
 
 @bot.command(name='auth', pass_context=True)

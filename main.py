@@ -24,6 +24,8 @@ from discord import NotFound
 from discord.ext import commands, tasks
 from dpytools.menus import multichoice
 from dpytools.parsers import to_timedelta, Trimmer
+from requests import PreparedRequest
+
 from database import db
 
 # Setup the bot
@@ -1332,6 +1334,27 @@ async def whois(ctx, *, user: discord.Member = None):
         embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
     embed.set_footer(text='ID: ' + str(user.id))
     return await ctx.send(embed=embed)
+
+
+@bot.command()
+async def welcomeimg(ctx, member: discord.Member):
+    embed = discord.Embed(colour=discord.Colour.green())
+    req = PreparedRequest()
+    req.prepare_url(
+        url='https://api.xzusfin.repl.co/card?',
+        params={
+            'avatar': str(member.avatar_url_as(format='png')),
+            'middle': 'everybody welcome',
+            'name': str(member.name),
+            'bottom': str('to ' + member.guild.name),
+            'text': '#CCCCCC',
+            'avatarborder': '#CCCCCC',
+            'avatarbackground': '#CCCCCC',
+            'background': '#000000' #or image url
+        }
+    )
+    embed.set_image(url=req.url)
+    await ctx.send(embed=embed)
 
 
 @slash.slash(name="doggo",

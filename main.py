@@ -1238,6 +1238,7 @@ async def whois(ctx: Context, *, user: discord.Member = None):
         except:
             embed.add_field(name="Current Activity",
                             value=f"{activity} {user.activities[0].name}", inline=False)
+    # We get an output of xxxxxxxx.xxx, this is an invalid epoch, so we strip everything after the "."
     joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
     discord_joined_time = str((user.created_at - datetime(1970, 1, 1)).total_seconds()).split('.')
 

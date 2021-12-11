@@ -1,14 +1,17 @@
 # Holy shit, that's a lot of imports
+import sys
 from urllib import parse, request
+from requests import PreparedRequest
 import aiohttp
 import discord.ext
-from discord import Webhook, AsyncWebhookAdapter
+from discord import Webhook, AsyncWebhookAdapter, http
 from discord.ext import commands
 from decouple import config
-from discord_slash import SlashCommand, SlashContext, ComponentContext
+from discord_slash import SlashCommand, SlashContext, ComponentContext, MenuContext
 from discord_slash.utils.manage_commands import create_option
-from discord_slash.utils.manage_components import create_button, create_actionrow
-from discord_slash.model import ButtonStyle
+from discord_slash.utils.manage_components import create_button, create_actionrow,\
+    create_select_option, create_select, wait_for_component
+from discord_slash.model import ButtonStyle, ContextMenuType
 from discord_slash.utils.manage_components import wait_for_component
 import requests
 import discord
@@ -16,24 +19,17 @@ import json
 from durations import Duration
 import time
 from discord.ext.commands import *
-import sys
-from datetime import datetime, timedelta
-from typing import Optional
-from bson import ObjectId
-from discord import NotFound
-from discord.ext import commands, tasks
-from dpytools.menus import multichoice
-from dpytools.parsers import to_timedelta, Trimmer
-from requests import PreparedRequest
+from datetime import datetime
 
-from database import db
+from discord.ext import commands, tasks
+
 
 # Setup the bot
 intents = discord.Intents.default()
 intents.members = True
 intents.presences = True
 bot = commands.Bot(command_prefix='$', intents=intents, case_insensitive=True)
-bot.remove_command('help')
+# bot.remove_command('help')
 toe_ken = config('TOKEN')
 slash = SlashCommand(bot, sync_commands=True)
 
@@ -194,12 +190,18 @@ bot.guild_ids = []  # Bypass stupid hour+ waiting time for global commands
 
 @bot.event
 async def on_ready():
+    if config("DEBUG") == "False":
+        await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot peace be upon him")
+        debugStatus = "normal"
+    else:
+        await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot testing be his job")
+        debugStatus = "debug"
     print(f"╔═══════════════════════════════════════════════════")
     print(f"╠Bot is ready")
-    print(f"╠{bot_name}")
+    print(f"╠{bot.user.name} running in {debugStatus} mode")
     print(f"╠Discord API Version: {discord.__version__}")
     print(f"╠═Guilds:")
-    for guild in bot.guilds:  # Print list of current guilds
+    for guild in bot.guilds:  # Print list of current guildsPreparedRequest
         bot.guild_ids.append(guild.id)
         print(f"╠════{guild.name} ({guild.id})")
     print(f"╚═══════════════════════════════════════════════════")
@@ -231,9 +233,168 @@ async def on_ready():
             member[1] -= current_time
 
 
+ids = [858547359804555264]
+@slash.slash(name="gimme-roles",
+             guild_ids=ids,
+             description="Give yourself some roles",
+)
+async def roles(ctx: SlashContext):
+    select = create_select(
+    options=[
+    create_select_option("Random Gang", value="893284269798068305"),
+    create_select_option("Other pronouns/ask me", value="866455940958126091"),
+    create_select_option("One/ones", value="866460688583229492"),
+    create_select_option("He/Him", value="866455665357881364"),
+    create_select_option("She/Her", value="866455537234477095"),
+    create_select_option("They/Them", value="866455786988765194"),
+    create_select_option("It/its", value="866460549680332810"),
+    create_select_option("Among us gang", value="891046340996530256"),
+    create_select_option("Jackbox gang", value="863916385268400158"),
+    create_select_option("There be dungeons and dragons", value="861365982803132456"),
+    create_select_option("Movie gang", value="860624643449946153"),
+    create_select_option("Announcement gang", value="866471817450356737")
+
+    ],
+    custom_id="gimme-roles",
+    placeholder="Choose your roles",
+    min_values=1,
+    max_values=12
+    )
+    await ctx.send("Role selection", components=[create_actionrow(select)], hidden=True)
+    # ctx: ComponentContext = await wait_for_component(bot, components=[create_actionrow(select)])
+    # await ctx.edit_origin(content=f"Added {ctx.author.display_name} to <@&{ctx.selected_options[0]}>", hidden=True)
+    # roles = discord.utils.get(ctx.guild.roles, id=int(ctx.selected_options[0]))
+    # await ctx.author.add_roles(roles)
+
+
+@bot.event
+async def on_component(ctx: ComponentContext):
+    if ctx.custom_id == "gimme-roles":
+        for role in ctx.selected_options:
+            roles = discord.utils.get(ctx.guild.roles, id=int(role))
+            await ctx.author.add_roles(roles)
+        # This definitely looks like shit, but it works really goodly
+        rolestr = str(ctx.selected_options).replace(" '", "<@&").replace("',", "> ").replace("']", "> ").replace("['", "<@&")
+        await ctx.edit_origin(content=f"Added you to {rolestr}", hidden=True, components=None)
+
+
+@bot.command()
+async def welcomeimg(ctx, member: discord.Member):
+    await ctx.message.delete()
+    embed = discord.Embed(colour=discord.Colour.green())
+    req = PreparedRequest()
+    users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
+    banner_id = users["banner"]
+    # If statement because the user may not have a banner
+    print(banner_id)
+    if not str(banner_id) == "None":
+        banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
+        req.prepare_url(
+        url='https://api.xzusfin.repl.co/card?',
+        params={
+            'avatar': str(member.avatar_url_as(format='png')),
+            'middle': 'everybody welcome',
+            'name': str(member.name),
+            'bottom': str('to ' + member.guild.name),
+            'text': member.color,
+            'avatarborder': member.color,
+            'avatarbackground': member.color,
+            'background': banner_url
+        }
+        )
+        await ctx.send(req.url)
+        embed.set_image(url=req.url)
+    else:
+        req.prepare_url(
+        url='https://api.xzusfin.repl.co/card?',
+        params={
+            'avatar': str(member.avatar_url_as(format='png')),
+            'middle': 'everybody welcome',
+            'name': str(member.name),
+            'bottom': str('to ' + member.guild.name),
+            'text': '#CCCCCC',
+            'avatarborder': '#CCCCCC',
+            'avatarbackground': '#CCCCCC',
+            'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"  #or image url
+        }
+        )
+        embed.set_image(url=req.url)
+        await ctx.send(embed=embed)
+
+
+# @bot.command()
+# async def rolehelp(ctx):
+#     embed = discord.Embed(title="How to assign your roles",
+#                           description="Simply type /gimme-roles in any text channel to grab some roles, you can select more than one and can also choose your preferred pronouns")
+#     embed.set_thumbnail(url='https://discordtemplates.me/icon.png')
+#     embed.add_field(name="D&D gang", value="We will ping you when we're going to play D&D", inline=True)
+#     embed.add_field(name="Movie gang", value="Like to watch movies? We will ping you when it's movie time",
+#                     inline=True)
+#     embed.add_field(name="Announcement gang", value="Like getting lot's of pings for things?", inline=True)
+#     embed.add_field(name="Jackbox gang", value="Do you play Jackbox?", inline=True)
+#     embed.add_field(name="Among us gang", value="Feeling sus? Grab this role", inline=True)
+#     embed.add_field(name="Random gang",
+#                     value="Sometimes random events happen. Grab this role to be notified of them", inline=True)
+#     await ctx.send(embed=embed)
+
+
+@bot.command()
+async def banner(ctx, member: discord.Member = None):
+    await ctx.message.delete()
+    if member is None:
+        member = ctx.message.author
+    req = PreparedRequest()
+    users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
+    banner_id = users["banner"]
+    # If statement because the user may not have a banner
+    if not str(banner_id) == "None":
+        banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
+        req.prepare_url(
+        url='https://api.xzusfin.repl.co/card?',
+        params={
+            'avatar': str(member.avatar_url_as(format='png')),
+            'middle': ' ',
+            'name': str(member.name),
+            'bottom': ' ',
+            'text': member.color,
+            'avatarborder': member.color,
+            'avatarbackground': member.color,
+            'background': banner_url
+        }
+        )
+        await ctx.send(req.url)
+    else:
+        req.prepare_url(
+        url='https://api.xzusfin.repl.co/card?',
+        params={
+            'avatar': str(member.avatar_url_as(format='png')),
+            'middle': ' ',
+            'name': str(member.name),
+            'bottom': ' ',
+            'text': '#CCCCCC',
+            'avatarborder': '#CCCCCC',
+            'avatarbackground': '#CCCCCC',
+            'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"
+        }
+        )
+        await ctx.send(req.url)
+
+
 @bot.event
 async def on_message(message):
     blacklist_channels = [907718985343197194]  # Don't listen to the message logger channel to avoid looping
+    if len(message.content) > 1500:
+        if not message.channel.id in blacklist_channels:
+            step = 1000
+            for i in range(0, len(message.content), 1000):
+                slice = message.content[i:step]
+                step += 1000
+                async with aiohttp.ClientSession() as session:
+                    webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
+                    await webhook.send(
+                        f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {slice}",
+                        username=message.author.display_name, avatar_url=message.author.avatar_url)
+
     if message.channel.id in blacklist_channels:
         return
     else:  # Otherwise do the logging thing
@@ -370,8 +531,44 @@ async def on_member_join(member):
             date_format = "%a, %d %b %Y %I:%M %p"
             embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
             await mod_log.send(embed=embed)
-            # Send the welcome message
+            # Send the welcome banner
             channel = bot.get_channel(858547359804555267)
+            req = PreparedRequest()
+            users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
+            banner_id = users["banner"]
+            # If statement because the user may not have a banner
+            if not str(banner_id) == "None":
+                banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
+                req.prepare_url(
+                    url='https://api.xzusfin.repl.co/card?',
+                    params={
+                        'avatar': str(member.avatar_url_as(format='png')),
+                        'middle': ' ',
+                        'name': str(member.name),
+                        'bottom': ' ',
+                        'text': member.color,
+                        'avatarborder': member.color,
+                        'avatarbackground': member.color,
+                        'background': banner_url
+                    }
+                )
+                await channel.send(req.url)
+            else:
+                req.prepare_url(
+                    url='https://api.xzusfin.repl.co/card?',
+                    params={
+                        'avatar': str(member.avatar_url_as(format='png')),
+                        'middle': ' ',
+                        'name': str(member.name),
+                        'bottom': ' ',
+                        'text': '#CCCCCC',
+                        'avatarborder': '#CCCCCC',
+                        'avatarbackground': '#CCCCCC',
+                        'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"
+                    }
+                )
+                await channel.send(req.url)
+            # Send the welcome message
             title = "Welcome to Prism SMP!"
             description = "Please look at the <#861317568807829535> when you have a minute.\n\n" \
                           "You can grab some self roles over in <#861288424640348160>.\n" \
@@ -380,7 +577,7 @@ async def on_member_join(member):
                           " then ask in <#869280855657447445> to get yourself whitelisted."
             embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
             embed.set_footer(text=member.name, icon_url=member.avatar_url)
-            await channel.send(embed=embed)
+            await member.send(embed=embed)
             # Give the user the New Member role
             role = discord.utils.get(member.guild.roles, name='New Member')
             await member.add_roles(role)
@@ -492,7 +689,7 @@ async def staff(ctx):
            "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n" \
            "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n" \
            "`/whitelist <mention discord user>` Whitelists the user\n" \
-           "'/arrest <user> <reason>` Arrests the user\n" \
+           "`/arrest <user> <reason>` Arrests the user\n" \
            "`/release <user> <reason>` Releases the user from police custody"
     embed = discord.Embed(title=f"{bot_name} Command Help", description=help, color=ctx.author.color)
     embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
@@ -509,7 +706,7 @@ async def staff(ctx: SlashContext):
            "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n" \
            "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n" \
            "`/whitelist <mention discord user>` Whitelists the user\n" \
-           "'/arrest <user> <reason>` Arrests the user\n" \
+           "`/arrest <user> <reason>` Arrests the user\n" \
            "`/release <user> <reason>` Releases the user from police custody"
     embed = discord.Embed(title=f"{bot_name} Command Help", description=help, color=ctx.message.author.color)
     embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
@@ -738,6 +935,10 @@ def timeformat(secs):
 
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
+    try:
+        RolesJson = open(filename, "r+")
+    except:
+        RolesJson = open(filename, "w+")
     RolesJson.seek(0)
     a = json.load(RolesJson)
     RolesJson.seek(0)
@@ -1163,6 +1364,73 @@ async def ping(ctx):
     await ctx.send(f'My ping is {round((bot.latency * 1000), 3)} ms!')
 
 
+@slash.context_menu(target=ContextMenuType.USER,
+                    name="Who is this?",
+                    guild_ids=ids)
+async def my_new_command(ctx: MenuContext, user: discord.Member = None):
+    user = ctx.target_author
+    if user.activities:  # check if the user has an activity
+        if str(user.activities[0].type) == "ActivityType.playing":
+            activity = "Playing:"
+        elif str(user.activities[0].type) == "ActivityType.streaming":
+            activity = "Streaming:"
+        elif str(user.activities[0].type) == "ActivityType.listening":
+            activity = "Listening to:"
+        elif str(user.activities[0].type) == "ActivityType.watching":
+            activity = "Watching"
+        elif str(user.activities[0].type) == "ActivityType.custom":
+            activity = ""
+        elif str(user.activities[0].type) == "ActivityType.competing":
+            activity = "Competing in:"
+        else:
+            activity = "Funkiness"
+        has_activity = True
+    else:  # if they don't we can't reference it
+        has_activity = False
+
+    top_role = user.roles[-1]  # first element in roles is `@everyone` and last is top role
+    embed = discord.Embed(color=top_role.color, description=user.mention)
+    embed.set_author(name=str(user), icon_url=user.avatar_url)
+    if str(user.id) == "709089341007200288":  # FT :POGGERS:
+        embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/861289278374150164/917731281503150090/"
+                                "3ee9a6c54e15a2929d276cd9ba366442.gif")
+    elif str(user.id) == "510748531926106113":  # Orang
+        embed.set_thumbnail(url="https://c.tenor.com/aw-QZPYpGmkAAAAM/carrot-garden.gif")
+    elif str(user.id) == "103523893834166272":  # Apo
+        embed.set_thumbnail(url="https://thumbs.gfycat.com/FrayedUncommonGrosbeak-size_restricted.gif")
+    elif str(user.id) == "690864077861421066":  # Alina
+        embed.set_thumbnail(url="https://media4.giphy.com/media/QsTGfN7bYXUm4/200.gif")
+    elif str(user.id) == "324504908013240330":  # ME!!!!!!!!111!!
+        embed.set_thumbnail(url="https://64.media.tumblr.com/e12f4de9050b40e88d76d396bd848c08/"
+                                "tumblr_oi94oaK9Wl1rcqnnxo1_r1_400.gifv")
+    else:
+        embed.set_thumbnail(url=user.avatar_url)
+    if has_activity:
+        try:
+            if str(user.activities[0].details) == "None":
+                embed.add_field(name="Current Activity",
+                                value=f"{activity} {user.activities[0].name}", inline=False)
+            else:
+                embed.add_field(name="Current Activity",
+                                value=f"{activity} {user.activities[0].name} | {user.activities[0].details}",
+                                inline=False)
+        except:
+            embed.add_field(name="Current Activity",
+                            value=f"{activity} {user.activities[0].name}", inline=False)
+    joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
+    discord_joined_time = str((user.created_at - datetime(1970, 1, 1)).total_seconds()).split('.')
+
+    embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
+    members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
+    embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
+    embed.add_field(name="Joined Discord", value=f"<t:{discord_joined_time[0]}:R>", inline=False)
+    if len(user.roles) > 1:
+        role_string = ' '.join([r.mention for r in user.roles][1:])
+        embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
+    embed.set_footer(text='ID: ' + str(user.id))
+    return await ctx.send(embed=embed, hidden=True)
+
+
 @slash.slash(name="whois",
              guild_ids=bot.guild_ids,
              description="Shows some info on users",
@@ -1240,7 +1508,6 @@ async def whois(ctx: Context, *, user: discord.Member = None):
         except:
             embed.add_field(name="Current Activity",
                             value=f"{activity} {user.activities[0].name}", inline=False)
-    # We get an output of xxxxxxxx.xxx, this is an invalid epoch, so we strip everything after the "."
     joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
     discord_joined_time = str((user.created_at - datetime(1970, 1, 1)).total_seconds()).split('.')
 
@@ -1334,27 +1601,6 @@ async def whois(ctx, *, user: discord.Member = None):
         embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
     embed.set_footer(text='ID: ' + str(user.id))
     return await ctx.send(embed=embed)
-
-
-@bot.command()
-async def welcomeimg(ctx, member: discord.Member):
-    embed = discord.Embed(colour=discord.Colour.green())
-    req = PreparedRequest()
-    req.prepare_url(
-        url='https://api.xzusfin.repl.co/card?',
-        params={
-            'avatar': str(member.avatar_url_as(format='png')),
-            'middle': 'everybody welcome',
-            'name': str(member.name),
-            'bottom': str('to ' + member.guild.name),
-            'text': '#CCCCCC',
-            'avatarborder': '#CCCCCC',
-            'avatarbackground': '#CCCCCC',
-            'background': '#000000' #or image url
-        }
-    )
-    embed.set_image(url=req.url)
-    await ctx.send(embed=embed)
 
 
 @slash.slash(name="doggo",

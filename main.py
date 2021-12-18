@@ -8,29 +8,26 @@ import sys
 from urllib import parse, request
 from urllib.parse import parse_qsl
 from requests import PreparedRequest
+from decouple import config
 import aiohttp
 import discord.ext
+import discord
 from discord import Webhook, AsyncWebhookAdapter, http
-from discord.ext import commands
-from decouple import config
+from discord.ext.commands import CommandNotFound
+from discord.ext.commands import *
+from discord.ext import commands, tasks
 from discord_slash import SlashCommand, SlashContext, ComponentContext, MenuContext
 from discord_slash.utils.manage_commands import create_option
 from discord_slash.utils.manage_components import create_button, create_actionrow,\
     create_select_option, create_select, wait_for_component
 from discord_slash.model import ButtonStyle, ContextMenuType
-from discord_slash.utils.manage_components import wait_for_component
+from slash_help import SlashHelp
 import requests
-import discord
 import json
 from durations import Duration
 import time
-from discord.ext.commands import *
 from datetime import datetime
-from dinteractions_Paginator import Paginator
-from discord.ext import commands, tasks
 import logging
-from discord.ext.commands import CommandNotFound
-from slash_help import SlashHelp
 
 
 # Setup the logger
@@ -73,7 +70,8 @@ bot = commands.Bot(command_prefix=['$', 'pls', 'prism'],
                    intents=intents,
                    case_insensitive=True,
                    help_command=None,
-                   strip_after_prefix=True, )
+                   strip_after_prefix=True
+                   )
 toe_ken = config('TOKEN')
 slash = SlashCommand(bot, sync_commands=True)
 help_slash = SlashHelp(bot,
@@ -217,6 +215,7 @@ status = ""
 #                 await db.all_reminders.replace_one({'_id': reminder['_id']}, reminder)
 #
 
+
 async def has_perms(ctx):  # Check that a user has one of the roles to manage the bot
     for b in ctx.author.roles:
         if b.id in RJD["perms"]:
@@ -295,6 +294,14 @@ async def on_component(ctx: ComponentContext):
         # This definitely looks like shit, but it works really goodly
         rolestr = str(ctx.selected_options).replace(" '", "<@&").replace("',", "> ").replace("']", "> ").replace("['", "<@&")
         await ctx.edit_origin(content=f"Added you to {rolestr}", hidden=True, components=None)
+    if ctx.custom_id == "take-me-roles":
+        for role in ctx.selected_options:
+            roles = discord.utils.get(ctx.guild.roles, id=int(role))
+            await ctx.author.remove_roles(roles)
+        # This definitely looks like shit, but it works really goodly
+        rolestr = str(ctx.selected_options).replace(" '", "<@&").replace("',", "> ").replace("']", "> ").replace(
+            "['", "<@&")
+        await ctx.edit_origin(content=f"Removed you from {rolestr}", hidden=True, components=None)
 
 
 @bot.event
@@ -312,16 +319,17 @@ async def on_member_update(before, after):
 @bot.command(description="Allows Bored to evaluate code", category="Owner Only")
 @is_owner()
 async def eval(ctx, *, code):
-    str_obj = io.StringIO()  # Retrieves a stream of data
-    try:
-        with contextlib.redirect_stdout(str_obj):
-            exec(code)
-    except Exception as e:
-        return await ctx.send(f"```{e.__class__.__name__}: {e}```")
-    output = str_obj.getvalue()
-    if len(output) < 1:
-        output = "There was no output"
-    await ctx.send(f'```py\n{output}```')
+    async with ctx.typing():
+        str_obj = io.StringIO()  # Retrieves a stream of data
+        try:
+            with contextlib.redirect_stdout(str_obj):
+                exec(code)
+        except Exception as e:
+            return await ctx.send(f"```{e.__class__.__name__}: {e}```")
+        output = str_obj.getvalue()
+        if len(output) < 1:
+            output = "There was no output"
+        await ctx.send(f'```py\n{output}```')
 
 
 @slash.slash(name="ip",
@@ -510,61 +518,35 @@ async def roles(ctx: SlashContext):
     await ctx.send("Role selection", components=[create_actionrow(select)], hidden=True)
 
 
-@bot.command(description="Sends the welcome banner", category="Testing")
-async def welcomeimg(ctx, member: discord.Member):
-    await ctx.message.delete()
-    channel = bot.get_channel(858547359804555267)
-    req = PreparedRequest()
-    users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
-    banner_id = users["banner"]
-    # If statement because the user may not have a banner
-    if not str(banner_id) == "None":
-        banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
-        req.prepare_url(
-            url='https://api.xzusfin.repl.co/card?',
-            params={
-                'avatar': str(member.avatar_url_as(format='png')),
-                'middle': 'Everyone welcome',
-                'name': str(member.name),
-                'bottom': 'To Prism SMP',
-                'text': member.color,
-                'avatarborder': member.color,
-                'avatarbackground': member.color,
-                'background': banner_url
-            }
-        )
-        body = dict(parse_qsl(req.body))
-        if 'code' in body:
-            print("Not sending a banner due to invalid response")
-            print(body)
-            print(req.url)
-        else:
-            await ctx.send(req.url)
-            print(body)
-            print(req.url)
-    else:
-        req.prepare_url(
-            url='https://api.xzusfin.repl.co/card?',
-            params={
-                'avatar': str(member.avatar_url_as(format='png')),
-                'middle': ' ',
-                'name': str(member.name),
-                'bottom': ' ',
-                'text': '#CCCCCC',
-                'avatarborder': '#CCCCCC',
-                'avatarbackground': '#CCCCCC',
-                'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"
-            }
-        )
-        body = dict(parse_qsl(req.body))
-        if 'code' in body:
-            print("Not sending a banner due to invalid response")
-            print(body)
-            print(req.url)
-        else:
-            await ctx.send(req.url)
-            print(body)
-            print(req.url)
+@slash.slash(name="take-me-roles",
+             guild_ids=bot.guild_ids,
+             description="Remove roles from yourself",
+)
+async def roles(ctx: SlashContext):
+    select = create_select(
+    options=[
+    create_select_option("Random Gang", value="893284269798068305"),
+    create_select_option("Other pronouns/ask me", value="866455940958126091"),
+    create_select_option("One/ones", value="866460688583229492"),
+    create_select_option("He/Him", value="866455665357881364"),
+    create_select_option("She/Her", value="866455537234477095"),
+    create_select_option("They/Them", value="866455786988765194"),
+    create_select_option("It/its", value="866460549680332810"),
+    create_select_option("Among us gang", value="891046340996530256"),
+    create_select_option("Jackbox gang", value="863916385268400158"),
+    create_select_option("There be dungeons and dragons", value="861365982803132456"),
+    create_select_option("Movie gang", value="860624643449946153"),
+    create_select_option("Announcement gang", value="866471817450356737"),
+    create_select_option("Shush the bot pings", value="920459523947364373")
+
+    ],
+    custom_id="take-me-roles",
+    placeholder="Choose the roles you no longer want",
+    min_values=1,
+    max_values=13
+    )
+    await ctx.send("Role selection", components=[create_actionrow(select)], hidden=True)
+
 
 @bot.command(description="Sends some info on what the self roles are", category="Utility")
 async def rolehelp(ctx):
@@ -715,29 +697,81 @@ async def list(ctx: SlashContext, role: discord.Role):
         await ctx.send(embed=embed)
 
 
+@bot.command(pass_context=True)
+@check(has_perms)
+async def purge(ctx, limit: int=None):
+    if limit is None:
+        await ctx.send("You didn't tell me how many messages to purge", delete_after=20)
+        return
+    await ctx.channel.purge(limit=limit)
+    await ctx.send(f'Purged {limit} messages')
+    mod_log = bot.get_channel(897765157940396052)
+    title = f"Messages Purged"
+    embed = discord.Embed(title=title,
+                          color=ctx.message.author.color,
+                          description=f"Purged {limit} messages from <#{ctx.channel.id}>")
+    embed.set_footer(text=f"Discord name: {ctx.message.author.display_name}\nDiscord ID: {ctx.message.author.id}",
+                     icon_url=ctx.message.author.avatar_url)
+    await mod_log.send(embed=embed)
+
+
+@purge.error
+async def clear_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You cant do that!")
+
+
 @bot.command(description="Sends the welcome message in-case users need it again", category="Utility")
 async def welcomemsg(ctx):
     # Send the welcome message
     title = "Welcome to Prism SMP!"
-    description = "You can grab some self roles over in <#861288424640348160>.\n" \
-                  "The IP is in <#858549386962272296>" \
-                  " (You don't have to read the entirety of that)\n" \
-                  " Ask in <#869280855657447445> to get yourself whitelisted.\n\n" \
-                  "**Rules:**\n" \
-                  "1. Follow the [Discord ToS](https://discord.com/terms).\n" \
-                  "2. No hate speech or harassment.\n" \
-                  "3. Keep the server PG-13.\n" \
-                  "4. Do not hack or use any unofficial applications that give you an advantage. Optifine is ok.\n" \
-                  "5. Respect player's claims and boundaries.\n" \
-                  "6. Do not grief the server. This includes stealing from other players.\n" \
-                  "7. Do not go around killing everyone you see. Essentially, be nice.\n" \
-                  "8. Listen to the staff, they're here to help.\n" \
-                  "9. Don't spam in the discord or the server.\n" \
-                  "10. Please don't build in a 500 block radius around spawn. " \
-                  "This space is dedicated to community projects such as the shopping and mini-games districts\n" \
-                  "11. If your build spans more than 50 chunks you have to get it validated by staff\n" \
-                  "12. Have fun!\n\n" \
-                  "For a full list of your rights as a member, see the constitution. "
+    description = """__General information__
+                    "If you need anything or have a question of any sort, contact a <@&858547638719086613>. Your issue will then go as far as necessary up the ladder.
+                    
+                    You can grab some self roles over in <#861288424640348160>.
+                    
+                    The IP is in <#858549386962272296>: you don't have to read the entirety of that as it is a tad outdated and due a complete rewrite... it still can give you a rough idea of where we are coming from and can give you an idea of your rights as a Prismian.
+                    
+                    Ask in <#869280855657447445> to get yourself whitelisted.
+                    
+                    Have fun!
+                    
+                    __Rules__
+                    ```Note: 
+                    Use common sense and don't be a douche. There is more to "rules" than those written here. This is not meant as an exhaustive list. Listen to the staff```
+                    
+                    **1) Social**
+                    1.1 Follow the [Discord ToS](https://discord.com/terms).
+                    
+                    1.2 No hate speech or harassment.
+                    
+                    1.3 Keep the server PG-13. Keep in mind some of our members might be younger than you. Set an example.
+                    
+                    1.4 Unwanted PvP (don't go around murdering people), stealing and griefing are severely punished.
+                    
+                    1.5 Don't spam in the discord or on the server.
+                    
+                    1.6 Respect player's claims and boundaries. Do not use farms without explicit permission. It is generally accepted to harvest crops for food and replant it unless the owner decides otherwise. If a sign says "keep out", keep out.
+                    
+                    **2) Technical**
+                    2.1 Any unofficial application/mod/client giving you an advantage over other players are considered cheating and are strictly prohibited. In case of doubt, contact the staff.
+                    
+                    **3) Building**
+                    3.1 Ask for permission from the players you want to settle nearby. 
+                    
+                    3.2 No building at less than 500 blocks from spawn (~x280 z230). The area around spawn is dedicated to community builds such as the Shopping District and the Mini-games District. Anything built there prior to this rule is safe to stay as long as their owners are Prism members.
+                    
+                    3.3 For Shopping District rules, see the pinned message in 🎙︱survival-adverts 
+                    
+                    3.4 Mega-projects are to be validated by staff: if you plan a build spanning more than 50 chunks please contact staff for approval prior to start building.
+                    
+                    3.5 Spawnproof anything you build on the Nether Roof.
+                    
+                    3.6 Consider lag when building farms. Examples: 
+                    3.6.1 Put your villagers in minecart or on double carpets to disable their pathfinding AI
+                    
+                    3.6.2 Put composters on top of your unlocked hoppers to disable their "sucking" action and reduce their impact on the server. """
+
     embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
     embed.set_thumbnail(url="https://cdn.discordapp.com/avatars/890176674237399040/5716879890391b6204a71b05a77b2258.webp?size=1024")
     await ctx.send(embed=embed)
@@ -758,17 +792,30 @@ async def on_member_join(member):
         if member.bot:  # Bloody bots
             return
         else:
-            # Send a message to the mods
-            mod_log = bot.get_channel(897765157940396052)
-            title = f"{member.display_name} joined the server"
-            embed = discord.Embed(title=title, color=discord.Color.green())
-            embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}", icon_url=member.avatar_url)
-            date_format = "%a, %d %b %Y %I:%M %p"
-            embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
-            await mod_log.send(embed=embed)
+            if time.time() - member.created_at.timestamp() < 2592000:
+                # Send a message to the mods
+                mod_log = bot.get_channel(897765157940396052)
+                title = f"{member.display_name} is potentially suspicious"
+                embed = discord.Embed(title=title, color=discord.Color.red())
+                embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}",
+                                 icon_url=member.avatar_url)
+                date_format = "%a, %d %b %Y %I:%M %p"
+                embed.set_thumbnail(
+                    url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/Warning.svg/1200px-Warning.svg.png")
+                embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
+                await mod_log.send(embed=embed)
+            else:
+                # Send a message to the mods
+                mod_log = bot.get_channel(897765157940396052)
+                title = f"{member.display_name} joined the server"
+                embed = discord.Embed(title=title, color=discord.Color.green())
+                embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}", icon_url=member.avatar_url)
+                date_format = "%a, %d %b %Y %I:%M %p"
+                embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
+                await mod_log.send(embed=embed)
             # Send the welcome banner
             channel = bot.get_channel(858547359804555267)
-            channel.send("If you need anything from staff or simply have questions, ping a <@&858547638719086613>")
+            await channel.send("If you need anything from staff or simply have questions, ping a <@&858547638719086613>")
             req = PreparedRequest()
             users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
             banner_id = users["banner"]

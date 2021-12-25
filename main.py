@@ -1700,7 +1700,7 @@ async def whois(ctx: Context, *, user: discord.Member = None):
                             value=f"{activity} {user.activities[0].name}", inline=False)
     joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
     discord_joined_time = str((user.created_at - datetime(1970, 1, 1)).total_seconds()).split('.')
-
+    embed.add_field(name="Discord Name", value=f"{user.name}#{user.discriminator}")
     embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
     members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
     embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
@@ -1781,7 +1781,7 @@ async def whois(ctx, *, user: discord.Member = None):
                             value=f"{activity} {user.activities[0].name}", inline=False)
     joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
     discord_joined_time = str((user.created_at - datetime(1970, 1, 1)).total_seconds()).split('.')
-
+    embed.add_field(name="Discord Name", value=f"{user.name}#{user.discriminator}")
     embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
     members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
     embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)

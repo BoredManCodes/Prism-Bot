@@ -614,7 +614,7 @@ async def banner(ctx, member: discord.Member = None):
 async def on_message(message):
     if "discord.com/channels" in message.content:
         try:
-            await message.delete()
+            #await message.delete()
             link = message.content.split('/')
             server_id = int(link[4])
             channel_id = int(link[5])

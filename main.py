@@ -3,6 +3,7 @@ import contextlib
 import io
 import ipaddress
 import os
+import re
 import subprocess
 import sys
 from urllib import parse, request
@@ -306,14 +307,15 @@ async def on_component(ctx: ComponentContext):
 
 @bot.event
 async def on_member_update(before, after):
-    if before.display_name != after.display_name:
-        embed = discord.Embed(title=f"Changed Name")
-        embed.add_field(name='User', value=before.mention)
-        embed.add_field(name='Before', value=before.display_name)
-        embed.add_field(name='After', value=after.display_name)
-        embed.set_thumbnail(url=after.avatar_url)
-        channel = bot.get_channel(897765157940396052)
-        await channel.send(embed=embed)
+    if before.guild.id == 858547359804555264:
+        if before.display_name != after.display_name:
+            embed = discord.Embed(title=f"Changed Name")
+            embed.add_field(name='User', value=before.mention)
+            embed.add_field(name='Before', value=before.display_name)
+            embed.add_field(name='After', value=after.display_name)
+            embed.set_thumbnail(url=after.avatar_url)
+            channel = bot.get_channel(897765157940396052)
+            await channel.send(embed=embed)
 
 
 @bot.command(description="Allows Bored to evaluate code", category="Owner Only")
@@ -610,27 +612,48 @@ async def banner(ctx, member: discord.Member = None):
 
 @bot.event
 async def on_message(message):
-    blacklist_channels = [907718985343197194]  # Don't listen to the message logger channel to avoid looping
-    if len(message.content) > 1500:
-        if not message.channel.id in blacklist_channels:
-            step = 1000
-            for i in range(0, len(message.content), 1000):
-                slice = message.content[i:step]
-                step += 1000
-                async with aiohttp.ClientSession() as session:
-                    webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
-                    await webhook.send(
-                        f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {slice}",
-                        username=message.author.display_name, avatar_url=message.author.avatar_url)
+    if "discord.com/channels" in message.content:
+        try:
+            message.delete()
+            link = message.content.split('/')
+            server_id = int(link[4])
+            channel_id = int(link[5])
+            msg_id = int(link[6])
 
-    if message.channel.id in blacklist_channels:
-        return
-    else:  # Otherwise do the logging thing
-        async with aiohttp.ClientSession() as session:
-            webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
-            await webhook.send(
-                f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {message.content}",
-                username=message.author.display_name, avatar_url=message.author.avatar_url)
+            print(server_id, channel_id, msg_id)
+            server = bot.get_guild(server_id)
+            channel = server.get_channel(channel_id)
+            quoted = await channel.fetch_message(msg_id)
+            embed = discord.Embed(description=f"{quoted.content}", color=quoted.author.color)
+            embed.set_author(name=f"{quoted.author.display_name} in #{quoted.channel.name}",
+                             icon_url=quoted.author.avatar_url,
+                             url=quoted.jump_url)
+            embed.set_footer(text=f"Quoted by {message.author.display_name}", icon_url=message.author.avatar_url)
+            await message.channel.send(embed=embed)
+        except:
+            print("Not doing anything")
+
+    # blacklist_channels = [907718985343197194]  # Don't listen to the message logger channel to avoid looping
+    # if len(message.content) > 1500:
+    #     if not message.channel.id in blacklist_channels:
+    #         step = 1000
+    #         for i in range(0, len(message.content), 1000):
+    #             slice = message.content[i:step]
+    #             step += 1000
+    #             async with aiohttp.ClientSession() as session:
+    #                 webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
+    #                 await webhook.send(
+    #                     f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {slice}",
+    #                     username=message.author.display_name, avatar_url=message.author.avatar_url)
+    #
+    # if message.channel.id in blacklist_channels:
+    #     return
+    # else:  # Otherwise do the logging thing
+    #     async with aiohttp.ClientSession() as session:
+    #         webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
+    #         await webhook.send(
+    #             f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {message.content}",
+    #             username=message.author.display_name, avatar_url=message.author.avatar_url)
 
     if message.author == bot.user:  # Don't listen to yourself
         return

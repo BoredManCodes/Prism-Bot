@@ -3,7 +3,6 @@ import contextlib
 import io
 import ipaddress
 import os
-import re
 import subprocess
 import sys
 from urllib import parse, request
@@ -29,7 +28,7 @@ from durations import Duration
 import time
 from datetime import datetime
 import logging
-
+import random
 
 # Setup the logger
 class CustomFormatter(logging.Formatter):
@@ -238,11 +237,12 @@ async def has_perms(ctx):  # Check that a user has one of the roles to manage th
     await ctx.send(embed=embed)
     return False
 
-bot.guild_ids = []  # Bypass stupid hour+ waiting time for global commands
+bot.guild_ids = [858547359804555264]  # Bypass stupid hour+ waiting time for global commands
 
 
 @bot.event
 async def on_ready():
+    prismian.start()
     if config("DEBUG") == "False":
         await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot peace be upon him")
         debugStatus = "normal"
@@ -255,7 +255,6 @@ async def on_ready():
     print(f"╠Discord API Version: {discord.__version__}")
     print(f"╠═Guilds:")
     for guild in bot.guilds:  # Print list of current guildsPreparedRequest
-        bot.guild_ids.append(guild.id)
         print(f"╠════{guild.name} ({guild.id})")
     print(f"╚═══════════════════════════════════════════════════")
     global RJD, RolesJson
@@ -356,6 +355,11 @@ async def ip(ctx: SlashContext, address=None):
     try:
         ip_address = ipaddress.ip_address(address)  # This will return an error if it's not a valid IP. Saves me doing input validation
         message = await ctx.send("https://cdn.discordapp.com/emojis/783447587940073522.gif")
+        # os.system(f"ping -c 1  {address}")
+        try:
+            ping = subprocess.check_output(["ping", "-c", "1", address]).decode('utf-8')
+        except subprocess.CalledProcessError:
+            ping = "Host appears down, or not answering ping requests"
         os.system(f"nmap  {address} -oG nmap.grep")
         process = subprocess.Popen(['./nmap.sh'],
                                    stdout=subprocess.PIPE,
@@ -389,8 +393,11 @@ async def ip(ctx: SlashContext, address=None):
         embed = discord.Embed(title="IP lookup", description=f"Lookup details for {address}",
                               color=discord.Color.green())
         embed.set_footer(text=f"Requested by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
-        state = ""
-        embed.add_field(name="Location", value=f"{result['city']}, {state[1]}\n{result['region']}, {result['country']}", inline=True)
+        try:
+            embed.add_field(name="Location", value=f"{result['city']}\n{result['region']}, {result['country']}", inline=True)
+        except:
+            print(probe)
+            pass
         if not result['hostname'] == '':
             embed.add_field(name="Hostname", value=str(result['hostname']), inline=True)
         if not result['host-domain'] == '':
@@ -408,8 +415,8 @@ async def ip(ctx: SlashContext, address=None):
         if len(one) < 3:
             one = None
         embed.add_field(name="Nmap Results", value=f"```py\n{one}\n```", inline=False)
+        embed.add_field(name="Ping Results", value=f"```\n{ping}\n```", inline=True)
         await message.edit(embed=embed, content="")
-        print(probe)
     except ValueError:
         embed = discord.Embed(title="We ran into an error", description="That isn't a valid IP",
                               color=discord.Color.red())
@@ -418,7 +425,7 @@ async def ip(ctx: SlashContext, address=None):
 
 
 @bot.command(description="Displays information on the given IP", category="Utility")
-async def ip(ctx, ip=None):
+async def ip(ctx, address=None):
     if ip is None:
         embed = discord.Embed(title="We ran into an error", description="You forgot to add an IP",
                               color=discord.Color.red())
@@ -427,9 +434,15 @@ async def ip(ctx, ip=None):
         return
 
     try:
-        ip_address = ipaddress.ip_address(ip)
-        message = await ctx.send("https://cdn.discordapp.com/emojis/783447587940073522.gif")
-        os.system(f"nmap  {ip} -oG nmap.grep")
+        ip_address = ipaddress.ip_address(
+            address)  # This will return an error if it's not a valid IP. Saves me doing input validation
+        message = await ctx.reply("https://cdn.discordapp.com/emojis/783447587940073522.gif")
+        # os.system(f"ping -c 1  {address}")
+        try:
+            ping = subprocess.check_output(["ping", "-c", "1", address]).decode('utf-8')
+        except subprocess.CalledProcessError:
+            ping = "Host appears down, or not answering ping requests"
+        os.system(f"nmap  {address} -oG nmap.grep")
         process = subprocess.Popen(['./nmap.sh'],
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE)
@@ -441,7 +454,7 @@ async def ip(ctx, ip=None):
         params = {
             'user-id': config("NaughtyBoy_user"),
             'api-key': config("NaughtyBoy_key"),
-            'ip': ip,
+            'ip': address,
             'reverse-lookup': True
         }
         postdata = parse.urlencode(params).encode()
@@ -452,23 +465,28 @@ async def ip(ctx, ip=None):
         params = {
             'user-id': config("NaughtyBoy_user"),
             'api-key': config("NaughtyBoy_key"),
-            'ip': ip,
+            'ip': address,
             'reverse-lookup': True
         }
         postdata = parse.urlencode(params).encode()
         req = request.Request(url, data=postdata)
         response = request.urlopen(req)
         probe = json.loads(response.read().decode("utf-8"))
-        embed = discord.Embed(title="IP lookup", description=f"Lookup details for {ip}",
+        embed = discord.Embed(title="IP lookup", description=f"Lookup details for {address}",
                               color=discord.Color.green())
         embed.set_footer(text=f"Requested by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
-        state = ""
-        embed.add_field(name="Location", value=f"{result['city']}, {state[1]}\n{result['region']}, {result['country']}", inline=True)
+        try:
+            embed.add_field(name="Location", value=f"{result['city']}\n{result['region']}, {result['country']}",
+                            inline=True)
+        except:
+            print(probe)
+            pass
         if not result['hostname'] == '':
             embed.add_field(name="Hostname", value=str(result['hostname']), inline=True)
         if not result['host-domain'] == '':
             embed.add_field(name="Host Domain", value=str(result['host-domain']), inline=True)
-        embed.add_field(name="Maps Link", value=f"https://maps.google.com/?q={result['latitude']},{result['longitude']}", inline=True)
+        embed.add_field(name="Maps Link",
+                        value=f"https://maps.google.com/?q={result['latitude']},{result['longitude']}", inline=True)
         embed.add_field(name="Provider", value=f"{probe['provider-description']}", inline=True)
         if probe['is-vpn']:
             embed.add_field(name="Is VPN?", value=f"Yes {probe['vpn-domain']}", inline=True)
@@ -481,8 +499,8 @@ async def ip(ctx, ip=None):
         if len(one) < 3:
             one = None
         embed.add_field(name="Nmap Results", value=f"```py\n{one}\n```", inline=False)
+        embed.add_field(name="Ping Results", value=f"```\n{ping}\n```", inline=True)
         await message.edit(embed=embed, content="")
-        print(probe)
     except ValueError:
         embed = discord.Embed(title="We ran into an error", description="That isn't a valid IP",
                               color=discord.Color.red())
@@ -614,13 +632,13 @@ async def banner(ctx, member: discord.Member = None):
 async def on_message(message):
     if "discord.com/channels" in message.content:
         try:
-            #await message.delete()
+            await message.delete()
             link = message.content.split('/')
             server_id = int(link[4])
             channel_id = int(link[5])
             msg_id = int(link[6])
 
-            print(server_id, channel_id, msg_id)
+            # print(server_id, channel_id, msg_id)
             server = bot.get_guild(server_id)
             channel = server.get_channel(channel_id)
             quoted = await channel.fetch_message(msg_id)
@@ -708,16 +726,72 @@ async def list(ctx: SlashContext, role: discord.Role):
     if len(check_len) > 2000:  # Ensure we don't go over the Discord embed limit
         title = f"**{count} members with the {role.name} role**"
         description = str(sorted(usernames,
-                                 key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
+                                 key=str.lower)).replace(', ', '\n').replace('[', '').replace(']', '').replace('\'', '')
         await ctx.send(f"{title}\n{description}\n\n`List too long to be sent as an embed`")
     else:
-        usernames = [m.mention for m in role.members]
+        usernames = [m.display_name for m in role.members]
         title = f"**{count} members with the {role.mention} role**"
         description = str(sorted(usernames,
-                                 key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
+                                 key=str.lower)).replace(', ', '\n').replace('[', '').replace(']', '').replace('\'', '')
         embed = discord.Embed(description=f"{title}\n{description}", color=role.color)
         embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
         await ctx.send(embed=embed)
+
+
+@slash.slash(name="purge",
+             guild_ids=bot.guild_ids,
+             description="Purges the defined amount of messages from this channel",
+             options=[
+                 create_option(
+                     name="amount",
+                     description="The amount you want to delete",
+                     option_type=option_type['integer'],
+                     required=True
+                 )
+             ])
+@check(has_perms)
+async def purge(ctx: SlashContext, limit: int = None):
+    if limit is None:
+        await ctx.send("You didn't tell me how many messages to purge", delete_after=20)
+        return
+    await ctx.channel.purge(limit=limit)
+    await ctx.send(f'Purged {limit} messages')
+    mod_log = bot.get_channel(897765157940396052)
+    title = f"Messages Purged"
+    embed = discord.Embed(title=title,
+                          color=ctx.message.author.color,
+                          description=f"Purged {limit} messages from <#{ctx.channel.id}>")
+    embed.set_footer(text=f"Discord name: {ctx.message.author.display_name}\nDiscord ID: {ctx.message.author.id}",
+                     icon_url=ctx.message.author.avatar_url)
+    await mod_log.send(embed=embed)
+
+
+@slash.slash(name="clear",
+             guild_ids=bot.guild_ids,
+             description="Purges the defined amount of messages from this channel",
+             options=[
+                 create_option(
+                     name="amount",
+                     description="The amount you want to delete",
+                     option_type=option_type['integer'],
+                     required=True
+                 )
+             ])
+@check(has_perms)
+async def clear(ctx: SlashContext, limit: int = None):
+    if limit is None:
+        await ctx.send("You didn't tell me how many messages to purge", delete_after=20)
+        return
+    await ctx.channel.purge(limit=limit)
+    await ctx.send(f'Purged {limit} messages')
+    mod_log = bot.get_channel(897765157940396052)
+    title = f"Messages Purged"
+    embed = discord.Embed(title=title,
+                          color=ctx.message.author.color,
+                          description=f"Purged {limit} messages from <#{ctx.channel.id}>")
+    embed.set_footer(text=f"Discord name: {ctx.message.author.display_name}\nDiscord ID: {ctx.message.author.id}",
+                     icon_url=ctx.message.author.avatar_url)
+    await mod_log.send(embed=embed)
 
 
 @bot.command(pass_context=True)
@@ -810,6 +884,20 @@ async def on_command_error(ctx, error):
 
 
 @bot.event
+async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
+    # print(payload)
+    if int(payload.message_id) == 920460790354567258:
+        channel = bot.get_channel(int(payload.data["channel_id"]))
+        message = await channel.fetch_message(payload.message_id)
+        embed = discord.Embed(title="Changelog changed",
+                              description=str(message.content).replace(':tick:', ':white_check_mark:'),
+                              color=discord.colour.Color.blurple())
+        channel = bot.get_channel(897765157940396052)
+        await channel.send(embed=embed)
+        # print(message)
+
+
+@bot.event
 async def on_member_join(member):
     if member.guild.id == 858547359804555264:  # Only detect if the user joined the Prism guild
         if member.bot:  # Bloody bots
@@ -838,7 +926,17 @@ async def on_member_join(member):
                 await mod_log.send(embed=embed)
             # Send the welcome banner
             channel = bot.get_channel(858547359804555267)
-            await channel.send("If you need anything from staff or simply have questions, ping a <@&858547638719086613>")
+            messages = [
+                f"Welcome {member.name}\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"Hi {member.name}!\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"{member.name} joined us\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"{member.name} is *one of us*\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"Hoi {member.name}\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"{member.name} is here!\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"Welcome to the party {member.name}\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"Hey `@everyone` {member.name} joined Prism~\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>"
+            ]
+            await channel.send(random.choice(messages))
             req = PreparedRequest()
             users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
             banner_id = users["banner"]
@@ -864,8 +962,10 @@ async def on_member_join(member):
                     print(body)
                     print(req.url)
                 else:
-                    await channel.send(req.url)
-
+                    img_data = requests.get(req.url).content
+                    with open('Banner.png', 'wb') as handler:
+                        handler.write(img_data)
+                    await channel.send(file=discord.File('Banner.png'))
             else:
                 req.prepare_url(
                     url='https://api.xzusfin.repl.co/card?',
@@ -886,8 +986,10 @@ async def on_member_join(member):
                     print(body)
                     print(req.url)
                 else:
-                    await channel.send(req.url)
-
+                    img_data = requests.get(req.url).content
+                    with open('Banner.png', 'wb') as handler:
+                        handler.write(img_data)
+                    await channel.send(file=discord.File('Banner.png'))
             # Give the user the New Member role
             role = discord.utils.get(member.guild.roles, name='New Member')
             await member.add_roles(role)
@@ -899,6 +1001,24 @@ async def on_member_remove(member):
         if member.bot:
             return
         else:
+            messages = [
+                f"Goodbye {member.name}",
+                f"It appears {member.name} has left",
+                f"{member.name} has disappeared :(",
+                f"We wish {member.name} well in their travels",
+                f"Toodles {member.name}!",
+                f"{member.name} found love elsewhere :(",
+                f"{member.name} left\nSee you later alligator",
+                f"{member.name} left\nBye Felicia",
+                f"Some cause happiness wherever they go; {member.name} causes it whenever they go",
+                f"{member.name} left\nSo long, and thanks for all the fish!",
+                f"{member.name} left\nWe are really going to miss trying to avoid you around here",
+                f"{member.name} left\nGoodbye, Vietnam! That’s right, I’m history, I’m outta here, "
+                f"I got the lucky ticket home, baby",
+                f"Welp, I guess {member.name} died. That's the only reason I can imagine anyone would leave us"
+            ]
+            general = bot.get_channel(858547359804555267)
+            await general.send(random.choice(messages))
             channel = bot.get_channel(897765157940396052)
             title = f"{member.display_name} left the server"
             embed = discord.Embed(title=title, color=discord.Color.red())
@@ -1706,10 +1826,106 @@ async def whois(ctx: Context, *, user: discord.Member = None):
     embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
     embed.add_field(name="Joined Discord", value=f"<t:{discord_joined_time[0]}:R>", inline=False)
     if len(user.roles) > 1:
-        role_string = ' '.join([r.mention for r in user.roles][1:])
+        res = user.roles[::-1]
+        role_string = ' '.join([r.mention for r in res][:-1])
         embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
     embed.set_footer(text='ID: ' + str(user.id))
-    return await ctx.send(embed=embed)
+    await ctx.send(embed=embed)
+    # Game stuffs
+    IP = config("GAME_IP")
+    url = f"http://{IP}/players/{user.display_name}/stats"
+    # print(f"http://{IP}/players/{user.display_name}/stats")
+    page = requests.get(url)
+    stats = json.loads(page.text)
+    try:
+        if stats['error']:
+            return
+    except:
+        # Game time
+        sec = int(stats["time"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            game_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            game_time = f"{min_value} minutes"
+        # Death time
+        sec = int(stats["death"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            death_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            death_time = f"{min_value} minutes"
+        embed = discord.Embed(color=discord.colour.Color.red(),
+                              title=f"{user.display_name}'s current game stats")
+        embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Kills:", value=stats["kills"], inline=True)
+        embed.add_field(name="Deaths:", value=stats["deaths"], inline=True)
+        embed.add_field(name="XP level:", value=stats["level"], inline=True)
+        embed.add_field(name="Health:", value=stats["health"], inline=True)
+        embed.add_field(name="Hunger:", value=stats["food"], inline=True)
+        embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
+        embed.add_field(name="World:", value=stats["world"], inline=True)
+        embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay")
+        await ctx.send(embed=embed)
+
+@bot.command()
+async def game(ctx, user: discord.Member = None):
+    if user is None:
+        user = ctx.guild.get_member(ctx.author.id)
+    # Game stuffs
+    IP = config("GAME_IP")
+    url = f"http://{IP}/players/{user.display_name}/stats"
+    # print(f"http://{IP}/players/{user.display_name}/stats")
+    page = requests.get(url)
+    stats = json.loads(page.text)
+    try:
+        if stats['error']:
+            return
+    except:
+        # Game time
+        sec = int(stats["time"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            game_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            game_time = f"{min_value} minutes"
+        # Death time
+        sec = int(stats["death"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            death_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            death_time = f"{min_value} minutes"
+        embed = discord.Embed(color=discord.colour.Color.red(),
+                              title=f"{user.display_name}'s current game stats")
+        embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Kills:", value=stats["kills"], inline=True)
+        embed.add_field(name="Deaths:", value=stats["deaths"], inline=True)
+        embed.add_field(name="XP level:", value=stats["level"], inline=True)
+        embed.add_field(name="Health:", value=stats["health"], inline=True)
+        embed.add_field(name="Hunger:", value=stats["food"], inline=True)
+        embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
+        embed.add_field(name="World:", value=stats["world"], inline=True)
+        embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay")
+        await ctx.send(embed=embed)
 
 
 @bot.command(description="Shows some info on users", category="Utility")
@@ -1787,10 +2003,56 @@ async def whois(ctx, *, user: discord.Member = None):
     embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
     embed.add_field(name="Joined Discord", value=f"<t:{discord_joined_time[0]}:R>", inline=False)
     if len(user.roles) > 1:
-        role_string = ' '.join([r.mention for r in user.roles][1:])
+        res = user.roles[::-1]
+        role_string = ' '.join([r.mention for r in res][:-1])
         embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
     embed.set_footer(text='ID: ' + str(user.id))
-    return await ctx.send(embed=embed)
+    await ctx.send(embed=embed)
+    # Game stuffs
+    IP = config("GAME_IP")
+    url = f"http://{IP}/players/{user.display_name}/stats"
+    # print(f"http://{IP}/players/{user.display_name}/stats")
+    page = requests.get(url)
+    stats = json.loads(page.text)
+    try:
+        if stats['error']:
+            return
+    except:
+        # Game time
+        sec = int(stats["time"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            game_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            game_time = f"{min_value} minutes"
+        # Death time
+        sec = int(stats["death"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            death_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            death_time = f"{min_value} minutes"
+        embed = discord.Embed(color=discord.colour.Color.red(),
+                              title=f"{user.display_name}'s current game stats")
+        embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Kills:", value=stats["kills"], inline=True)
+        embed.add_field(name="Deaths:", value=stats["deaths"], inline=True)
+        embed.add_field(name="XP level:", value=stats["level"], inline=True)
+        embed.add_field(name="Health:", value=stats["health"], inline=True)
+        embed.add_field(name="Hunger:", value=stats["food"], inline=True)
+        embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
+        embed.add_field(name="World:", value=stats["world"], inline=True)
+        embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay")
+        await ctx.send(embed=embed)
 
 
 @slash.slash(name="doggo",
@@ -1847,6 +2109,23 @@ async def auth(ctx, message):
         await ctx.send("Something funky is going on")
 
 
+@tasks.loop(hours=12)
+async def prismian():
+    guild = bot.get_guild(858547359804555264)
+    for member in bot.get_guild(858547359804555264).members:
+        prismian_role = discord.utils.get(guild.roles, name='Prismian')
+        new_role = discord.utils.get(guild.roles, name='New Member')
+        if prismian_role not in member.roles and new_role in member.roles:
+            duration = datetime.now() - member.joined_at
+            hours, remainder = divmod(int(duration .total_seconds()), 3600)
+            days, hours = divmod(hours, 24)
+            if days >= 14:
+                mod_log = bot.get_channel(897765157940396052)
+                await mod_log.send(f"{member.display_name} has been a new member for {days} days and upgraded to Prismian today!")
+                await member.remove_roles(new_role)
+                await member.add_roles(prismian_role)
+
+
 @slash.slash(name="arrest",
              guild_ids=bot.guild_ids,
              description="Arrests a member",
@@ -1888,8 +2167,13 @@ async def arrest(ctx: SlashContext, user, reason):
 
     await mod_log.send(f'{ctx.author.display_name} cleared the <#866304038524813352> chat and arrested '
                        f'{user.display_name} for {reason}')
-    await police_station.send(f"{user.mention} you have been arrested by {ctx.author.mention} for "
-                              f"{reason}. Please stand-by")
+    await police_station.send(f"{user.mention} you have been arrested for "
+                              f"{reason}. Please stand-by\n"
+                              f"```You do not have to say anything. But, it may harm your defence if you do not mention"
+                              f" when questioned something which you later rely on in court. "
+                              f"Anything you do say may be given in evidence. "
+                              f"You have the right to have a lawyer present both during questioning and during court"
+                              f" proceedings.```")
 
 
 @slash.slash(name="release",

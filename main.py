@@ -16,8 +16,7 @@ import aiohttp
 import discord.ext
 import discord
 from discord import Webhook, AsyncWebhookAdapter, http
-from discord.ext.commands import CommandNotFound
-from discord.ext.commands import *
+from discord.ext.commands import CommandNotFound, is_owner, check, Context, has_permissions
 from discord.ext import commands, tasks
 from discord_slash import SlashCommand, SlashContext, ComponentContext, MenuContext
 from discord_slash.utils.manage_commands import create_option
@@ -245,41 +244,41 @@ bot.guild_ids = [858547359804555264]  # Bypass stupid hour+ waiting time for glo
 
 @bot.event
 async def on_ready():
-    prismian.start()
-    changelog.start()
     channel = bot.get_channel(897765157940396052)
     message = await channel.fetch_message(920460790354567258)
     with open("old.txt", "w", encoding="utf8") as text_file:
         print(message.content, file=text_file)
     if config("DEBUG") == "False":
         await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot peace be upon him")
-        debugStatus = "normal"
+        debug_status = "normal"
     else:
         await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot testing be his job")
-        debugStatus = "debug"
+        debug_status = "debug"
     print(f"╔═══════════════════════════════════════════════════")
     print(f"╠Bot is ready")
-    print(f"╠{bot.user.name} running in {debugStatus} mode")
+    print(f"╠{bot.user.name} running in {debug_status} mode")
     print(f"╠Discord API Version: {discord.__version__}")
     print(f"╠═Guilds:")
     for guild in bot.guilds:  # Print list of current guildsPreparedRequest
         print(f"╠════{guild.name} ({guild.id})")
     print(f"╚═══════════════════════════════════════════════════")
-    global RJD, RolesJson
-    TestingZone = bot.get_guild(int(config('guild_id')))
+    prismian.start()
+    changelog.start()
+    global RJD, roles_json
+    testing_zone = bot.get_guild(int(config('guild_id')))
     try:
-        RolesJson = open(filename, "r+")
+        roles_json = open(filename, "r+")
     except:
-        RolesJson = open(filename, "w+")
-        json.dump({"perms": [], "roles": []}, RolesJson)
-        RolesJson.seek(0)
-    RJD = json.load(RolesJson)
-    RolesJson.seek(0)
+        roles_json = open(filename, "w+")
+        json.dump({"perms": [], "roles": []}, roles_json)
+        roles_json.seek(0)
+    RJD = json.load(roles_json)
+    roles_json.seek(0)
     for role in RJD["roles"]:
         for member in RJD[role[0]]:
             if member[1] <= time.time():
                 try:
-                    await TestingZone.get_member(member[0]).remove_roles(TestingZone.get_role(int(role[0])),
+                    await testing_zone.get_member(member[0]).remove_roles(testing_zone.get_role(int(role[0])),
                                                                          reason="expired")
                 except:
                     pass
@@ -322,15 +321,14 @@ async def on_component(ctx: ComponentContext):
 
 @bot.event
 async def on_member_update(before, after):
-    if before.guild.id == 858547359804555264:
-        if before.display_name != after.display_name:
-            embed = discord.Embed(title=f"Changed Name")
-            embed.add_field(name='User', value=before.mention)
-            embed.add_field(name='Before', value=before.display_name)
-            embed.add_field(name='After', value=after.display_name)
-            embed.set_thumbnail(url=after.avatar_url)
-            channel = bot.get_channel(897765157940396052)
-            await channel.send(embed=embed)
+    if before.guild.id == 858547359804555264 and before.display_name != after.display_name:
+        embed = discord.Embed(title=f"Changed Name")
+        embed.add_field(name='User', value=before.mention)
+        embed.add_field(name='Before', value=before.display_name)
+        embed.add_field(name='After', value=after.display_name)
+        embed.set_thumbnail(url=after.avatar_url)
+        channel = bot.get_channel(897765157940396052)
+        await channel.send(embed=embed)
 
 
 @bot.command(description="Allows Bored to evaluate code", category="Owner Only")
@@ -370,7 +368,7 @@ async def ip(ctx: SlashContext, address=None):
 
     try:
         # This will return an error if it's not a valid IP. Saves me doing input validation
-        ip_address = ipaddress.ip_address(address)
+        ipaddress.ip_address(address)
         message = await ctx.send("https://cdn.discordapp.com/emojis/783447587940073522.gif")
         # os.system(f"ping -c 1  {address}")
         try:
@@ -414,7 +412,6 @@ async def ip(ctx: SlashContext, address=None):
             embed.add_field(name="Location", value=f"{result['city']}\n{result['region']}, {result['country']}", inline=True)
         except:
             print(probe)
-            pass
         if not result['hostname'] == '':
             embed.add_field(name="Hostname", value=str(result['hostname']), inline=True)
         if not result['host-domain'] == '':
@@ -451,8 +448,7 @@ async def ip(ctx, address=None):
         return
 
     try:
-        ip_address = ipaddress.ip_address(
-            address)  # This will return an error if it's not a valid IP. Saves me doing input validation
+        ipaddress.ip_address(address)  # This will return an error if it's not a valid IP. Saves me doing input validation
         message = await ctx.reply("https://cdn.discordapp.com/emojis/783447587940073522.gif")
         # os.system(f"ping -c 1  {address}")
         try:
@@ -497,7 +493,6 @@ async def ip(ctx, address=None):
                             inline=True)
         except:
             print(probe)
-            pass
         if not result['hostname'] == '':
             embed.add_field(name="Hostname", value=str(result['hostname']), inline=True)
         if not result['host-domain'] == '':
@@ -695,26 +690,25 @@ async def on_message(message):
     if "https://discord.gift/" in message.content.lower():  # Some dumbass sent free nitro
         await message.channel.send(":warning: FREE NITRO! :warning:\nThis link appears to be legitimate :D")
         return
-    if not message.guild:  # If message not in a guild it must be a DM
-        if not message.author == bot.user:  # Don't listen to yourself
-            message_filtered = str(message.content).replace('www', '').replace('http', '')  # No links pls
-            url = 'https://neutrinoapi.net/bad-word-filter'  # Filter out bad boy words
-            params = {
-                'user-id': config("NaughtyBoy_user"),
-                'api-key': config("NaughtyBoy_key"),
-                'content': message_filtered,
-                'censor-character': '•',
-                'catalog': 'strict'
-            }
-            postdata = parse.urlencode(params).encode()
-            req = request.Request(url, data=postdata)
-            response = request.urlopen(req)
-            result = json.loads(response.read().decode("utf-8"))
-            async with aiohttp.ClientSession() as session:
-                webhook = Webhook.from_url(config("MOD"), adapter=AsyncWebhookAdapter(session))
-                await webhook.send(
-                    f"{result['censored-content']}",
-                    username=f"{message.author.display_name} in DM", avatar_url=message.author.avatar_url)
+    if not message.guild and message.author != bot.user:  # If message not in a guild it must be a DM
+        message_filtered = str(message.content).replace('www', '').replace('http', '')  # No links pls
+        url = 'https://neutrinoapi.net/bad-word-filter'  # Filter out bad boy words
+        params = {
+            'user-id': config("NaughtyBoy_user"),
+            'api-key': config("NaughtyBoy_key"),
+            'content': message_filtered,
+            'censor-character': '•',
+            'catalog': 'strict'
+        }
+        postdata = parse.urlencode(params).encode()
+        req = request.Request(url, data=postdata)
+        response = request.urlopen(req)
+        result = json.loads(response.read().decode("utf-8"))
+        async with aiohttp.ClientSession() as session:
+            webhook = Webhook.from_url(config("MOD"), adapter=AsyncWebhookAdapter(session))
+            await webhook.send(
+                f"{result['censored-content']}",
+                username=f"{message.author.display_name} in DM", avatar_url=message.author.avatar_url)
     if str(bot.user.id) in message.content:
         reactions = ["<:iseeyou:876201272972304425>", "🇨", "🇦", "🇳", "▪️", "🇮", "◼️", "🇭", "🇪", "🇱", "🇵", "⬛", "🇾", "🇴", "🇺", "❓"]
         for reaction in reactions:
@@ -736,10 +730,10 @@ async def on_message(message):
 async def list(ctx: SlashContext, role: discord.Role):
     usernames = [m.display_name for m in role.members]
     count = 0
-    for m in role.members:
+    for i in role.members:
         count += 1
     check_len = str(sorted(usernames,
-                             key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
+                    key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
     if len(check_len) > 2000:  # Ensure we don't go over the Discord embed limit
         title = f"**{count} members with the {role.name} role**"
         description = str(sorted(usernames,
@@ -910,10 +904,6 @@ async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
             print(message.content, file=text_file)
         old = open("old.txt").readlines()
         new = open("new.txt").readlines()
-        old_text = [l for l in old]
-        new_text = [l for l in new]
-
-
         differ = difflib.Differ()
         differ_output = differ.compare(old, new)
         changes = '{0}'.format(''.join(differ_output)).replace('<a:tick:757490995720880159>', '✅').replace('<@!890176674237399040>', 'Prism Bot')
@@ -1188,10 +1178,10 @@ async def embed(ctx: SlashContext, *, embedlink, title, description, silent):
 
 
 def jsondump(v: dict):
-    RolesJson.seek(0)
-    json.dump(v, RolesJson)
-    RolesJson.truncate()
-    RolesJson.seek(0)
+    roles_json.seek(0)
+    json.dump(v, roles_json)
+    roles_json.truncate()
+    roles_json.seek(0)
 
 
 def timeformat(secs):
@@ -1264,40 +1254,6 @@ def timeformat(secs):
     return result
 
 
-    async def pushList(n: str):
-        try:
-            RJD[n][0][1] = RJD[n][0][1]
-        except IndexError:
-            return False
-        if RJD[n][0][1] <= 0:
-            try:
-                await TestingZone.get_member(RJD[n][0][0]).remove_roles(TestingZone.get_role(int(n)), reason="expired")
-            except:
-                pass
-            del RJD[n][0]
-            RolesJson.seek(0)
-            r = json.load(RolesJson)
-            del r[n][0]
-            jsondump(r)
-            for memberlist in RJD[n]:
-                memberlist[1] -= 0.5
-            await pushList(n)
-        else:
-            return True
-
-    @tasks.loop(seconds=0.5)
-    async def dec():
-        for role in RJD["roles"]:
-            n = role[0]
-            if not await pushList(n):
-                continue
-            for memberlist in RJD[n]:
-                memberlist[1] -= 0.5
-
-    dec.start()
-
-
-
 # Command to set a role to expire
 @slash.slash(name="role-expire",
              guild_ids=bot.guild_ids,
@@ -1318,32 +1274,32 @@ def timeformat(secs):
 @check(has_perms)
 async def expire(ctx: Context, role: discord.Role, *, time: str):
     print(role.permissions)
-    ExpireDuration = Duration(time)
-    ExpireDuration = ExpireDuration.to_seconds()
-    if int(ExpireDuration) == 0:
+    expire_duration = Duration(time)
+    expire_duration = expire_duration.to_seconds()
+    if int(expire_duration) == 0:
         await ctx.send(f"Check your syntax, /role-help")
         return
-    RolesJsonData = json.load(RolesJson)
-    RolesJson.seek(0)
+    roles_json_data = json.load(roles_json)
+    roles_json.seek(0)
     found = False
     t = str(role.id)
-    for ExpiringRole in RolesJsonData["roles"]:
-        if ExpiringRole[0] == t:
+    for expiring_role in roles_json_data["roles"]:
+        if expiring_role[0] == t:
             for memberlist in RJD[t]:
-                memberlist[1] -= (ExpiringRole[1] - ExpireDuration)
-            for memberlist2 in RolesJsonData[t]:
-                memberlist2[1] -= (ExpiringRole[1] - ExpireDuration)
-            ExpiringRole[1] = ExpireDuration
-            RJD["roles"][RolesJsonData["roles"].index(ExpiringRole)][1] = ExpireDuration
-            print(RolesJsonData)
+                memberlist[1] -= (expiring_role[1] - expire_duration)
+            for memberlist2 in roles_json_data[t]:
+                memberlist2[1] -= (expiring_role[1] - expire_duration)
+            expiring_role[1] = expire_duration
+            RJD["roles"][roles_json_data["roles"].index(expiring_role)][1] = expire_duration
+            print(roles_json_data)
             found = True
             break
     if not found:
-        RJD["roles"].append([t, ExpireDuration])
+        RJD["roles"].append([t, expire_duration])
         RJD[t] = []
-        RolesJsonData["roles"].append([t, ExpireDuration])
-        RolesJsonData[t] = []
-    jsondump(RolesJsonData)
+        roles_json_data["roles"].append([t, expire_duration])
+        roles_json_data[t] = []
+    jsondump(roles_json_data)
     await ctx.send(
         f"✓ set {role.name} to expire {str(Duration(time)).replace('<Duration ', 'after ').replace('>', '')}")
 
@@ -1352,32 +1308,32 @@ async def expire(ctx: Context, role: discord.Role, *, time: str):
 @check(has_perms)
 async def expire(ctx: Context, role: discord.Role, *, time: str):
     print(role.permissions)
-    ExpireDuration = Duration(time)
-    ExpireDuration = ExpireDuration.to_seconds()
-    if int(ExpireDuration) == 0:
+    expire_duration = Duration(time)
+    expire_duration = expire_duration.to_seconds()
+    if int(expire_duration) == 0:
         await ctx.send(f"Check your syntax, $role-help")
         return
-    RolesJsonData = json.load(RolesJson)
-    RolesJson.seek(0)
+    roles_json_data = json.load(roles_json)
+    roles_json.seek(0)
     found = False
     t = str(role.id)
-    for ExpiringRole in RolesJsonData["roles"]:
-        if ExpiringRole[0] == t:
+    for expiring_role in roles_json_data["roles"]:
+        if expiring_role[0] == t:
             for memberlist in RJD[t]:
-                memberlist[1] -= (ExpiringRole[1] - ExpireDuration)
-            for memberlist2 in RolesJsonData[t]:
-                memberlist2[1] -= (ExpiringRole[1] - ExpireDuration)
-            ExpiringRole[1] = ExpireDuration
-            RJD["roles"][RolesJsonData["roles"].index(ExpiringRole)][1] = ExpireDuration
-            print(RolesJsonData)
+                memberlist[1] -= (expiring_role[1] - expire_duration)
+            for memberlist2 in roles_json_data[t]:
+                memberlist2[1] -= (expiring_role[1] - expire_duration)
+            expiring_role[1] = expire_duration
+            RJD["roles"][roles_json_data["roles"].index(expiring_role)][1] = expire_duration
+            print(roles_json_data)
             found = True
             break
     if not found:
-        RJD["roles"].append([t, ExpireDuration])
+        RJD["roles"].append([t, expire_duration])
         RJD[t] = []
-        RolesJsonData["roles"].append([t, ExpireDuration])
-        RolesJsonData[t] = []
-    jsondump(RolesJsonData)
+        roles_json_data["roles"].append([t, expire_duration])
+        roles_json_data[t] = []
+    jsondump(roles_json_data)
     await ctx.message.add_reaction("✓")
 
 
@@ -1394,32 +1350,32 @@ async def expire(ctx: Context, role: discord.Role, *, time: str):
              ])
 @check(has_perms)
 async def unexpire(ctx, role: discord.Role):
-    RolesJson.seek(0)
-    RolesJsonData = json.load(RolesJson)
-    RolesJson.seek(0)
-    for ExpiringRole in RolesJsonData["roles"]:
-        if ExpiringRole[0] == str(role.id):
-            RolesJsonData["roles"].remove(ExpiringRole)
-            RJD["roles"].remove(ExpiringRole)
-            del RolesJsonData[str(role.id)]
+    roles_json.seek(0)
+    roles_json_data = json.load(roles_json)
+    roles_json.seek(0)
+    for expiring_role in roles_json_data["roles"]:
+        if expiring_role[0] == str(role.id):
+            roles_json_data["roles"].remove(expiring_role)
+            RJD["roles"].remove(expiring_role)
+            del roles_json_data[str(role.id)]
             del RJD[str(role.id)]
-    jsondump(RolesJsonData)
+    jsondump(roles_json_data)
     await ctx.send(f"✓ set {role.name} to not expire")
 
 
 @bot.command(description="Removes a role from expiration", category="Moderation")
 @check(has_perms)
 async def unexpire(ctx, role: discord.Role):
-    RolesJson.seek(0)
-    RolesJsonData = json.load(RolesJson)
-    RolesJson.seek(0)
-    for ExpiringRole in RolesJsonData["roles"]:
-        if ExpiringRole[0] == str(role.id):
-            RolesJsonData["roles"].remove(ExpiringRole)
-            RJD["roles"].remove(ExpiringRole)
-            del RolesJsonData[str(role.id)]
+    roles_json.seek(0)
+    roles_json_data = json.load(roles_json)
+    roles_json.seek(0)
+    for expiring_role in roles_json_data["roles"]:
+        if expiring_role[0] == str(role.id):
+            roles_json_data["roles"].remove(expiring_role)
+            RJD["roles"].remove(expiring_role)
+            del roles_json_data[str(role.id)]
             del RJD[str(role.id)]
-    jsondump(RolesJsonData)
+    jsondump(roles_json_data)
     await ctx.message.add_reaction("✓")
 
 
@@ -1540,8 +1496,8 @@ async def addperm(ctx: Context, role: discord.Role):
     r = role.id
     if r not in RJD["perms"]:
         RJD["perms"].append(r)
-        y = json.load(RolesJson)
-        RolesJson.seek(0)
+        y = json.load(roles_json)
+        roles_json.seek(0)
         y["perms"].append(r)
         jsondump(y)
         await ctx.send(f"✓ added {role.name} to the management team")
@@ -1555,8 +1511,8 @@ async def addperm(ctx: Context, role: discord.Role):
     r = role.id
     if r not in RJD["perms"]:
         RJD["perms"].append(r)
-        y = json.load(RolesJson)
-        RolesJson.seek(0)
+        y = json.load(roles_json)
+        roles_json.seek(0)
         y["perms"].append(r)
         jsondump(y)
         await ctx.send(f"✓ added {role.name} to the management team")
@@ -1580,8 +1536,8 @@ async def delperm(ctx: Context, role: discord.Role):
     r = role.id
     if r in RJD["perms"]:
         RJD["perms"].remove(r)
-        y = json.load(RolesJson)
-        RolesJson.seek(0)
+        y = json.load(roles_json)
+        roles_json.seek(0)
         y["perms"].remove(r)
         jsondump(y)
         await ctx.send(f"✓ removed {role.name} from the management role")
@@ -1595,8 +1551,8 @@ async def delperm(ctx: Context, role: discord.Role):
     r = role.id
     if r in RJD["perms"]:
         RJD["perms"].remove(r)
-        y = json.load(RolesJson)
-        RolesJson.seek(0)
+        y = json.load(roles_json)
+        roles_json.seek(0)
         y["perms"].remove(r)
         jsondump(y)
         await ctx.send(f"✓ removed {role.name} from the management role")
@@ -1609,9 +1565,9 @@ async def delperm(ctx: Context, role: discord.Role):
              description="View the roles that are set to expire"
              )
 async def viewroles(ctx: Context):
-    Roles = []
+    roles = []
     for role in RJD["roles"]:
-        Roles.append(f"<@&{role[0]}>")
+        roles.append(f"<@&{role[0]}>")
     expires = []
     for role in RJD["roles"]:
         expires.append(timeformat(role[1]))
@@ -1622,7 +1578,7 @@ async def viewroles(ctx: Context):
     )
     roles_embed.add_field(
         name="Role",
-        value="\n".join(Roles),
+        value="\n".join(roles),
         inline=True
     )
     roles_embed.add_field(
@@ -1635,9 +1591,9 @@ async def viewroles(ctx: Context):
 
 @bot.command(description="Lists the roles that are set to expire", category="Moderation")
 async def viewroles(ctx: Context):
-    Roles = []
+    roles = []
     for role in RJD["roles"]:
-        Roles.append(f"<@&{role[0]}>")
+        roles.append(f"<@&{role[0]}>")
     expires = []
     for role in RJD["roles"]:
         expires.append(timeformat(role[1]))
@@ -1648,7 +1604,7 @@ async def viewroles(ctx: Context):
     )
     roles_embed.add_field(
         name="Role",
-        value="\n".join(Roles),
+        value="\n".join(roles),
         inline=True
     )
     roles_embed.add_field(
@@ -1712,7 +1668,7 @@ async def ping(ctx):
 @slash.context_menu(target=ContextMenuType.USER,
                     name="Who is this?",
                     guild_ids=bot.guild_ids)
-async def my_new_command(ctx: MenuContext, user: discord.Member = None):
+async def context_menu(ctx: MenuContext):
     user = ctx.target_author
     if user.activities:  # check if the user has an activity
         if str(user.activities[0].type) == "ActivityType.playing":
@@ -1770,7 +1726,8 @@ async def my_new_command(ctx: MenuContext, user: discord.Member = None):
     embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
     embed.add_field(name="Joined Discord", value=f"<t:{discord_joined_time[0]}:R>", inline=False)
     if len(user.roles) > 1:
-        role_string = ' '.join([r.mention for r in user.roles][1:])
+        res = user.roles[::-1]
+        role_string = ' '.join([r.mention for r in res][:-1])
         embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
     embed.set_footer(text='ID: ' + str(user.id))
     return await ctx.send(embed=embed, hidden=True)

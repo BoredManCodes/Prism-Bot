@@ -5,8 +5,11 @@ import ipaddress
 import os
 import subprocess
 import sys
+import difflib
 from urllib import parse, request
 from urllib.parse import parse_qsl
+
+from PIL import Image
 from requests import PreparedRequest
 from decouple import config
 import aiohttp
@@ -243,6 +246,11 @@ bot.guild_ids = [858547359804555264]  # Bypass stupid hour+ waiting time for glo
 @bot.event
 async def on_ready():
     prismian.start()
+    changelog.start()
+    channel = bot.get_channel(897765157940396052)
+    message = await channel.fetch_message(920460790354567258)
+    with open("old.txt", "w", encoding="utf8") as text_file:
+        print(message.content, file=text_file)
     if config("DEBUG") == "False":
         await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot peace be upon him")
         debugStatus = "normal"
@@ -283,6 +291,14 @@ async def on_ready():
     for role in RJD["roles"]:
         for member in RJD[role[0]]:
             member[1] -= current_time
+
+
+@tasks.loop(minutes=2)
+async def changelog():
+    channel = bot.get_channel(897765157940396052)
+    message = await channel.fetch_message(920460790354567258)
+    with open("old.txt", "w", encoding="utf8") as text_file:
+        print(message.content, file=text_file)
 
 
 @bot.event
@@ -890,13 +906,22 @@ async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
     if int(payload.message_id) == 920460790354567258:
         channel = bot.get_channel(int(payload.data["channel_id"]))
         message = await channel.fetch_message(payload.message_id)
+        with open("new.txt", "w", encoding="utf8") as text_file:
+            print(message.content, file=text_file)
+        old = open("old.txt").readlines()
+        new = open("new.txt").readlines()
+        old_text = [l for l in old]
+        new_text = [l for l in new]
+
+
+        differ = difflib.Differ()
+        differ_output = differ.compare(old, new)
+        changes = '{0}'.format(''.join(differ_output)).replace('<a:tick:757490995720880159>', '✅').replace('<@!890176674237399040>', 'Prism Bot')
         embed = discord.Embed(title="Changelog changed",
                               url=message.jump_url,
-                              description=str(message.content).replace(':tick:', ':white_check_mark:'),
+                              description=f"```diff\n{changes}\n```",
                               color=discord.colour.Color.blurple())
-        channel = bot.get_channel(897765157940396052)
         await channel.send(embed=embed)
-        # print(message)
 
 
 @bot.event
@@ -967,7 +992,11 @@ async def on_member_join(member):
                     img_data = requests.get(req.url).content
                     with open('Banner.png', 'wb') as handler:
                         handler.write(img_data)
-                    await channel.send(file=discord.File('Banner.png'))
+                    try:
+                        Image.open('Banner.png')
+                        await channel.send(file=discord.File('Banner.png'))
+                    except IOError:
+                        logger.error("Banner was not a valid image")
             else:
                 req.prepare_url(
                     url='https://api.xzusfin.repl.co/card?',
@@ -991,7 +1020,11 @@ async def on_member_join(member):
                     img_data = requests.get(req.url).content
                     with open('Banner.png', 'wb') as handler:
                         handler.write(img_data)
-                    await channel.send(file=discord.File('Banner.png'))
+                    try:
+                        Image.open('Banner.png')
+                        await channel.send(file=discord.File('Banner.png'))
+                    except IOError:
+                        logger.error("Banner was not a valid image")
             # Give the user the New Member role
             role = discord.utils.get(member.guild.roles, name='New Member')
             await member.add_roles(role)
@@ -2113,6 +2146,7 @@ async def auth(ctx, message):
 
 @tasks.loop(hours=12)
 async def prismian():
+    logger.info("Checking for Prismian upgrades")
     guild = bot.get_guild(858547359804555264)
     for member in bot.get_guild(858547359804555264).members:
         prismian_role = discord.utils.get(guild.roles, name='Prismian')
@@ -2126,6 +2160,7 @@ async def prismian():
                 await mod_log.send(f"{member.display_name} has been a new member for {days} days and upgraded to Prismian today!")
                 await member.remove_roles(new_role)
                 await member.add_roles(prismian_role)
+                logger.info(f"{member.display_name} has been upgraded to Prismian")
 
 
 @slash.slash(name="arrest",
@@ -2153,10 +2188,12 @@ async def arrest(ctx: SlashContext, user, reason):
     whitelist = discord.utils.get(ctx.guild.roles, name='Whitelisted')
     await user.remove_roles(whitelist)
     arrestee = discord.utils.get(ctx.guild.roles, name='Arrestee')
+    muted = discord.utils.get(ctx.guild.roles, name='Muted')
+
     for member in ctx.guild.members:
         if arrestee in member.roles:
             await member.remove_roles(arrestee)
-    await user.add_roles(arrestee)
+    await user.add_roles(arrestee, muted)
     await police_station.purge(limit=int(10000))
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Arrestee"), send_messages=True,
                                          read_messages=True, reason=reason)
@@ -2188,10 +2225,12 @@ async def arrest(ctx: SlashContext, user: discord.Member = None, *, reason: str)
     whitelist = discord.utils.get(ctx.guild.roles, name='Whitelisted')
     await user.remove_roles(whitelist)
     arrestee = discord.utils.get(ctx.guild.roles, name='Arrestee')
+    muted = discord.utils.get(ctx.guild.roles, name='Muted')
+
     for member in ctx.guild.members:
         if arrestee in member.roles:
             await member.remove_roles(arrestee)
-    await user.add_roles(arrestee)
+    await user.add_roles(arrestee, muted)
     await police_station.purge(limit=int(10000))
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Arrestee"), send_messages=True,
                                          read_messages=True, reason=reason)
@@ -2237,7 +2276,8 @@ async def release(ctx: SlashContext, user, reason):
     await sentences_log.send(f'{ctx.author.display_name} released {user.display_name} from police custody for {reason}'
                              f'\n{ctx.author.mention} please don\'t forget to fill out the sentence here')
     arrestee = discord.utils.get(ctx.guild.roles, name='Arrestee')
-    await user.remove_roles(arrestee)
+    muted = discord.utils.get(ctx.guild.roles, name='Muted')
+    await user.remove_roles(arrestee, muted)
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Arrestee"), send_messages=False,
                                          read_messages=False, reason=reason)
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Moderator"), send_messages=True,

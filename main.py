@@ -1,41 +1,88 @@
 # Holy shit, that's a lot of imports
+import contextlib
+import io
+import ipaddress
+import os
+import subprocess
+import sys
 from urllib import parse, request
+from urllib.parse import parse_qsl
+from requests import PreparedRequest
+from decouple import config
 import aiohttp
 import discord.ext
-from discord import Webhook, AsyncWebhookAdapter, File
-from discord.ext import commands
-from decouple import config
-from discord_slash import SlashCommand, SlashContext, ComponentContext
-from discord_slash.utils.manage_commands import create_option
-from discord_slash.utils.manage_components import create_button, create_actionrow
-from discord_slash.model import ButtonStyle
-from discord_slash.utils.manage_components import wait_for_component
-import requests
 import discord
+from discord import Webhook, AsyncWebhookAdapter, http
+from discord.ext.commands import CommandNotFound
+from discord.ext.commands import *
+from discord.ext import commands, tasks
+from discord_slash import SlashCommand, SlashContext, ComponentContext, MenuContext
+from discord_slash.utils.manage_commands import create_option
+from discord_slash.utils.manage_components import create_button, create_actionrow,\
+    create_select_option, create_select, wait_for_component
+from discord_slash.model import ButtonStyle, ContextMenuType
+from slash_help import SlashHelp
+import requests
 import json
 from durations import Duration
 import time
-from discord.ext.commands import *
-import sys
-from datetime import datetime, timedelta
-from typing import Optional
-from bson import ObjectId
-from discord import NotFound
-from discord.ext import commands, tasks
-from dpytools.menus import multichoice
-from dpytools.parsers import to_timedelta, Trimmer
-from requests import PreparedRequest
-from PIL import Image, ImageDraw, ImageFont
-import io
+from datetime import datetime
+import logging
+import random
+
+# Setup the logger
+class CustomFormatter(logging.Formatter):
+
+    grey = "\x1b[38;21m"
+    yellow = "\x1b[33;21m"
+    red = "\x1b[31;21m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+
+    FORMATS = {
+        logging.DEBUG: grey + format + reset,
+        logging.INFO: grey + format + reset,
+        logging.WARNING: yellow + format + reset,
+        logging.ERROR: red + format + reset,
+        logging.CRITICAL: bold_red + format + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
+logger = logging.getLogger("discord")
+logger.setLevel(logging.INFO)
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(CustomFormatter())
+logger.addHandler(ch)
+
 
 # Setup the bot
 intents = discord.Intents.default()
 intents.members = True
 intents.presences = True
-bot = commands.Bot(command_prefix='$', intents=intents, case_insensitive=True)
-bot.remove_command('help')
+bot = commands.Bot(command_prefix=['$', 'pls', 'prism'],
+                   intents=intents,
+                   case_insensitive=True,
+                   help_command=None,
+                   strip_after_prefix=True
+                   )
 toe_ken = config('TOKEN')
 slash = SlashCommand(bot, sync_commands=True)
+help_slash = SlashHelp(bot,
+                       slash,
+                       toe_ken,
+                       dpy_command=True,
+                       no_category_name="All commands",
+                       no_category_description=" ",
+                       extended_buttons=True,
+                       prefix='$'
+                       )
 
 
 # Much easier than remembering numbers
@@ -168,6 +215,7 @@ status = ""
 #                 await db.all_reminders.replace_one({'_id': reminder['_id']}, reminder)
 #
 
+
 async def has_perms(ctx):  # Check that a user has one of the roles to manage the bot
     for b in ctx.author.roles:
         if b.id in RJD["perms"]:
@@ -189,18 +237,24 @@ async def has_perms(ctx):  # Check that a user has one of the roles to manage th
     await ctx.send(embed=embed)
     return False
 
-bot.guild_ids = []  # Bypass stupid hour+ waiting time for global commands
+bot.guild_ids = [858547359804555264]  # Bypass stupid hour+ waiting time for global commands
 
 
 @bot.event
 async def on_ready():
+    prismian.start()
+    if config("DEBUG") == "False":
+        await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot peace be upon him")
+        debugStatus = "normal"
+    else:
+        await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot testing be his job")
+        debugStatus = "debug"
     print(f"╔═══════════════════════════════════════════════════")
     print(f"╠Bot is ready")
-    print(f"╠{bot_name}")
+    print(f"╠{bot.user.name} running in {debugStatus} mode")
     print(f"╠Discord API Version: {discord.__version__}")
     print(f"╠═Guilds:")
-    for guild in bot.guilds:  # Print list of current guilds
-        bot.guild_ids.append(guild.id)
+    for guild in bot.guilds:  # Print list of current guildsPreparedRequest
         print(f"╠════{guild.name} ({guild.id})")
     print(f"╚═══════════════════════════════════════════════════")
     global RJD, RolesJson
@@ -232,16 +286,393 @@ async def on_ready():
 
 
 @bot.event
-async def on_message(message):
-    blacklist_channels = [907718985343197194]  # Don't listen to the message logger channel to avoid looping
-    if message.channel.id in blacklist_channels:
+async def on_component(ctx: ComponentContext):
+    if ctx.custom_id == "gimme-roles":
+        for role in ctx.selected_options:
+            roles = discord.utils.get(ctx.guild.roles, id=int(role))
+            await ctx.author.add_roles(roles)
+        # This definitely looks like shit, but it works really goodly
+        rolestr = str(ctx.selected_options).replace(" '", "<@&").replace("',", "> ").replace("']", "> ").replace("['", "<@&")
+        await ctx.edit_origin(content=f"Added you to {rolestr}", hidden=True, components=None)
+    if ctx.custom_id == "take-me-roles":
+        for role in ctx.selected_options:
+            roles = discord.utils.get(ctx.guild.roles, id=int(role))
+            await ctx.author.remove_roles(roles)
+        # This definitely looks like shit, but it works really goodly
+        rolestr = str(ctx.selected_options).replace(" '", "<@&").replace("',", "> ").replace("']", "> ").replace(
+            "['", "<@&")
+        await ctx.edit_origin(content=f"Removed you from {rolestr}", hidden=True, components=None)
+
+
+@bot.event
+async def on_member_update(before, after):
+    if before.guild.id == 858547359804555264:
+        if before.display_name != after.display_name:
+            embed = discord.Embed(title=f"Changed Name")
+            embed.add_field(name='User', value=before.mention)
+            embed.add_field(name='Before', value=before.display_name)
+            embed.add_field(name='After', value=after.display_name)
+            embed.set_thumbnail(url=after.avatar_url)
+            channel = bot.get_channel(897765157940396052)
+            await channel.send(embed=embed)
+
+
+@bot.command(description="Allows Bored to evaluate code", category="Owner Only")
+@is_owner()
+async def eval(ctx, *, code):
+    async with ctx.typing():
+        str_obj = io.StringIO()  # Retrieves a stream of data
+        try:
+            with contextlib.redirect_stdout(str_obj):
+                exec(code)
+        except Exception as e:
+            return await ctx.send(f"```{e.__class__.__name__}: {e}```")
+        output = str_obj.getvalue()
+        if len(output) < 1:
+            output = "There was no output"
+        await ctx.send(f'```py\n{output}```')
+
+
+@slash.slash(name="ip",
+             guild_ids=bot.guild_ids,
+             description="Displays information on the given IP",
+             options=[
+                 create_option(
+                     name="address",
+                     description="The IP address you want to check",
+                     option_type=option_type['string'],
+                     required=True
+                 )
+             ])
+async def ip(ctx: SlashContext, address=None):
+    if address is None:
+        embed = discord.Embed(title="We ran into an error", description="You forgot to add an IP",
+                              color=discord.Color.red())
+        embed.set_footer(text=f"Caused by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+        await ctx.send(embed=embed)
         return
-    else:  # Otherwise do the logging thing
-        async with aiohttp.ClientSession() as session:
-            webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
-            await webhook.send(
-                f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {message.content}",
-                username=message.author.display_name, avatar_url=message.author.avatar_url)
+
+    try:
+        # This will return an error if it's not a valid IP. Saves me doing input validation
+        ip_address = ipaddress.ip_address(address)
+        message = await ctx.send("https://cdn.discordapp.com/emojis/783447587940073522.gif")
+        # os.system(f"ping -c 1  {address}")
+        try:
+            ping = subprocess.check_output(["ping", "-c", "1", address]).decode('utf-8')
+        except subprocess.CalledProcessError:
+            ping = "Host appears down, or not answering ping requests"
+        os.system(f"nmap  {address} -oG nmap.grep")
+        process = subprocess.Popen(['./nmap.sh'],
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        three = stdout.decode('utf-8').replace('///', '')
+        two = three.replace('//', ' ')
+        one = two.replace('/', ' ').replace('      1 ', '')
+        url = 'https://neutrinoapi.net/ip-info'
+        params = {
+            'user-id': config("NaughtyBoy_user"),
+            'api-key': config("NaughtyBoy_key"),
+            'ip': address,
+            'reverse-lookup': True
+        }
+        postdata = parse.urlencode(params).encode()
+        req = request.Request(url, data=postdata)
+        response = request.urlopen(req)
+        result = json.loads(response.read().decode("utf-8"))
+        url = 'https://neutrinoapi.net/ip-probe'
+        params = {
+            'user-id': config("NaughtyBoy_user"),
+            'api-key': config("NaughtyBoy_key"),
+            'ip': address,
+            'reverse-lookup': True
+        }
+        postdata = parse.urlencode(params).encode()
+        req = request.Request(url, data=postdata)
+        response = request.urlopen(req)
+        probe = json.loads(response.read().decode("utf-8"))
+        embed = discord.Embed(title="IP lookup", description=f"Lookup details for {address}",
+                              color=discord.Color.green())
+        embed.set_footer(text=f"Requested by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+        try:
+            embed.add_field(name="Location", value=f"{result['city']}\n{result['region']}, {result['country']}", inline=True)
+        except:
+            print(probe)
+            pass
+        if not result['hostname'] == '':
+            embed.add_field(name="Hostname", value=str(result['hostname']), inline=True)
+        if not result['host-domain'] == '':
+            embed.add_field(name="Host Domain", value=str(result['host-domain']), inline=True)
+        embed.add_field(name="Maps Link", value=f"https://maps.google.com/?q={result['latitude']},{result['longitude']}", inline=True)
+        embed.add_field(name="Provider", value=f"{probe['provider-description']}", inline=True)
+        if probe['is-vpn']:
+            embed.add_field(name="Is VPN?", value=f"Yes {probe['vpn-domain']}", inline=True)
+        elif not probe['is-vpn']:
+            embed.add_field(name="Is VPN?", value=f"No", inline=True)
+        if probe['is-hosting']:
+            embed.add_field(name="Is Hosting?", value=f"Yes {probe['vpn-domain']}", inline=True)
+        elif not probe['is-hosting']:
+            embed.add_field(name="Is Hosting?", value=f"No", inline=True)
+        if len(one) < 3:
+            one = None
+        embed.add_field(name="Nmap Results", value=f"```py\n{one}\n```", inline=False)
+        embed.add_field(name="Ping Results", value=f"```\n{ping}\n```", inline=True)
+        await message.edit(embed=embed, content="")
+    except ValueError:
+        embed = discord.Embed(title="We ran into an error", description="That isn't a valid IP",
+                              color=discord.Color.red())
+        embed.set_footer(text=f"Caused by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+        await ctx.send(embed=embed)
+
+
+@bot.command(description="Displays information on the given IP", category="Utility")
+async def ip(ctx, address=None):
+    if ip is None:
+        embed = discord.Embed(title="We ran into an error", description="You forgot to add an IP",
+                              color=discord.Color.red())
+        embed.set_footer(text=f"Caused by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+        await ctx.send(embed=embed)
+        return
+
+    try:
+        ip_address = ipaddress.ip_address(
+            address)  # This will return an error if it's not a valid IP. Saves me doing input validation
+        message = await ctx.reply("https://cdn.discordapp.com/emojis/783447587940073522.gif")
+        # os.system(f"ping -c 1  {address}")
+        try:
+            ping = subprocess.check_output(["ping", "-c", "1", address]).decode('utf-8')
+        except subprocess.CalledProcessError:
+            ping = "Host appears down, or not answering ping requests"
+        os.system(f"nmap  {address} -oG nmap.grep")
+        process = subprocess.Popen(['./nmap.sh'],
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        three = stdout.decode('utf-8').replace('///', '')
+        two = three.replace('//', ' ')
+        one = two.replace('/', ' ').replace('      1 ', '')
+        url = 'https://neutrinoapi.net/ip-info'
+        params = {
+            'user-id': config("NaughtyBoy_user"),
+            'api-key': config("NaughtyBoy_key"),
+            'ip': address,
+            'reverse-lookup': True
+        }
+        postdata = parse.urlencode(params).encode()
+        req = request.Request(url, data=postdata)
+        response = request.urlopen(req)
+        result = json.loads(response.read().decode("utf-8"))
+        url = 'https://neutrinoapi.net/ip-probe'
+        params = {
+            'user-id': config("NaughtyBoy_user"),
+            'api-key': config("NaughtyBoy_key"),
+            'ip': address,
+            'reverse-lookup': True
+        }
+        postdata = parse.urlencode(params).encode()
+        req = request.Request(url, data=postdata)
+        response = request.urlopen(req)
+        probe = json.loads(response.read().decode("utf-8"))
+        embed = discord.Embed(title="IP lookup", description=f"Lookup details for {address}",
+                              color=discord.Color.green())
+        embed.set_footer(text=f"Requested by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+        try:
+            embed.add_field(name="Location", value=f"{result['city']}\n{result['region']}, {result['country']}",
+                            inline=True)
+        except:
+            print(probe)
+            pass
+        if not result['hostname'] == '':
+            embed.add_field(name="Hostname", value=str(result['hostname']), inline=True)
+        if not result['host-domain'] == '':
+            embed.add_field(name="Host Domain", value=str(result['host-domain']), inline=True)
+        embed.add_field(name="Maps Link",
+                        value=f"https://maps.google.com/?q={result['latitude']},{result['longitude']}", inline=True)
+        embed.add_field(name="Provider", value=f"{probe['provider-description']}", inline=True)
+        if probe['is-vpn']:
+            embed.add_field(name="Is VPN?", value=f"Yes {probe['vpn-domain']}", inline=True)
+        elif not probe['is-vpn']:
+            embed.add_field(name="Is VPN?", value=f"No", inline=True)
+        if probe['is-hosting']:
+            embed.add_field(name="Is Hosting?", value=f"Yes {probe['vpn-domain']}", inline=True)
+        elif not probe['is-hosting']:
+            embed.add_field(name="Is Hosting?", value=f"No", inline=True)
+        if len(one) < 3:
+            one = None
+        embed.add_field(name="Nmap Results", value=f"```py\n{one}\n```", inline=False)
+        embed.add_field(name="Ping Results", value=f"```\n{ping}\n```", inline=True)
+        await message.edit(embed=embed, content="")
+    except ValueError:
+        embed = discord.Embed(title="We ran into an error", description="That isn't a valid IP",
+                              color=discord.Color.red())
+        embed.set_footer(text=f"Caused by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+        await ctx.send(embed=embed)
+
+
+@slash.slash(name="gimme-roles",
+             guild_ids=bot.guild_ids,
+             description="Give yourself some roles",
+)
+async def roles(ctx: SlashContext):
+    select = create_select(
+    options=[
+    create_select_option("Random Gang", value="893284269798068305"),
+    create_select_option("Other pronouns/ask me", value="866455940958126091"),
+    create_select_option("One/ones", value="866460688583229492"),
+    create_select_option("He/Him", value="866455665357881364"),
+    create_select_option("She/Her", value="866455537234477095"),
+    create_select_option("They/Them", value="866455786988765194"),
+    create_select_option("It/its", value="866460549680332810"),
+    create_select_option("Among us gang", value="891046340996530256"),
+    create_select_option("Jackbox gang", value="863916385268400158"),
+    create_select_option("There be dungeons and dragons", value="861365982803132456"),
+    create_select_option("Movie gang", value="860624643449946153"),
+    create_select_option("Announcement gang", value="866471817450356737"),
+    create_select_option("Shush the bot pings", value="920459523947364373")
+
+    ],
+    custom_id="gimme-roles",
+    placeholder="Choose your roles",
+    min_values=1,
+    max_values=13
+    )
+    await ctx.send("Role selection", components=[create_actionrow(select)], hidden=True)
+
+
+@slash.slash(name="take-me-roles",
+             guild_ids=bot.guild_ids,
+             description="Remove roles from yourself",
+)
+async def roles(ctx: SlashContext):
+    select = create_select(
+    options=[
+    create_select_option("Random Gang", value="893284269798068305"),
+    create_select_option("Other pronouns/ask me", value="866455940958126091"),
+    create_select_option("One/ones", value="866460688583229492"),
+    create_select_option("He/Him", value="866455665357881364"),
+    create_select_option("She/Her", value="866455537234477095"),
+    create_select_option("They/Them", value="866455786988765194"),
+    create_select_option("It/its", value="866460549680332810"),
+    create_select_option("Among us gang", value="891046340996530256"),
+    create_select_option("Jackbox gang", value="863916385268400158"),
+    create_select_option("There be dungeons and dragons", value="861365982803132456"),
+    create_select_option("Movie gang", value="860624643449946153"),
+    create_select_option("Announcement gang", value="866471817450356737"),
+    create_select_option("Shush the bot pings", value="920459523947364373")
+
+    ],
+    custom_id="take-me-roles",
+    placeholder="Choose the roles you no longer want",
+    min_values=1,
+    max_values=13
+    )
+    await ctx.send("Role selection", components=[create_actionrow(select)], hidden=True)
+
+
+@bot.command(description="Sends some info on what the self roles are", category="Utility")
+async def rolehelp(ctx):
+    embed = discord.Embed(title="How to assign your roles",
+                          description="Simply type /gimme-roles in any text channel to grab some roles, you can select more than one and can also choose your preferred pronouns")
+    embed.set_thumbnail(url='https://discordtemplates.me/icon.png')
+    embed.add_field(name="D&D gang", value="We will ping you when we're going to play D&D", inline=True)
+    embed.add_field(name="Movie gang", value="Like to watch movies? We will ping you when it's movie time",
+                    inline=True)
+    embed.add_field(name="Announcement gang", value="Want to be pinged for non essential announcements?", inline=True)
+    embed.add_field(name="Jackbox gang", value="Do you play Jackbox?", inline=True)
+    embed.add_field(name="Among us gang", value="Feeling sus? Grab this role", inline=True)
+    embed.add_field(name="Random gang",
+                    value="Sometimes random events happen. Grab this role to be notified of them", inline=True)
+    embed.add_field(name="Shush the bot pings",
+                    value="Don't want to be pinged when you level up? Grab this role", inline=True)
+    await ctx.send(embed=embed)
+
+
+@bot.command(description="Sends the User's banner", category="Testing")
+async def banner(ctx, member: discord.Member = None):
+    await ctx.message.delete()
+    if member is None:
+        member = ctx.message.author
+    req = PreparedRequest()
+    users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
+    banner_id = users["banner"]
+    # If statement because the user may not have a banner
+    if not str(banner_id) == "None":
+        banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
+        req.prepare_url(
+        url='https://api.xzusfin.repl.co/card?',
+        params={
+            'avatar': str(member.avatar_url_as(format='png')),
+            'middle': ' ',
+            'name': str(member.name),
+            'bottom': ' ',
+            'text': member.color,
+            'avatarborder': member.color,
+            'avatarbackground': member.color,
+            'background': banner_url
+        }
+        )
+        await ctx.send(req.url)
+    else:
+        req.prepare_url(
+        url='https://api.xzusfin.repl.co/card?',
+        params={
+            'avatar': str(member.avatar_url_as(format='png')),
+            'middle': ' ',
+            'name': str(member.name),
+            'bottom': ' ',
+            'text': '#CCCCCC',
+            'avatarborder': '#CCCCCC',
+            'avatarbackground': '#CCCCCC',
+            'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"
+        }
+        )
+        await ctx.send(req.url)
+
+
+@bot.event
+async def on_message(message):
+    if "discord.com/channels" in message.content:
+        try:
+            await message.delete()
+            link = message.content.split('/')
+            server_id = int(link[4])
+            channel_id = int(link[5])
+            msg_id = int(link[6])
+
+            # print(server_id, channel_id, msg_id)
+            server = bot.get_guild(server_id)
+            channel = server.get_channel(channel_id)
+            quoted = await channel.fetch_message(msg_id)
+            embed = discord.Embed(description=f"{quoted.content}", color=quoted.author.color)
+            embed.set_author(name=f"{quoted.author.display_name} in #{quoted.channel.name}",
+                             icon_url=quoted.author.avatar_url,
+                             url=quoted.jump_url)
+            embed.set_footer(text=f"Quoted by {message.author.display_name}", icon_url=message.author.avatar_url)
+            await message.channel.send(embed=embed)
+        except:
+            print("Not doing anything")
+
+    # blacklist_channels = [907718985343197194]  # Don't listen to the message logger channel to avoid looping
+    # if len(message.content) > 1500:
+    #     if not message.channel.id in blacklist_channels:
+    #         step = 1000
+    #         for i in range(0, len(message.content), 1000):
+    #             slice = message.content[i:step]
+    #             step += 1000
+    #             async with aiohttp.ClientSession() as session:
+    #                 webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
+    #                 await webhook.send(
+    #                     f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {slice}",
+    #                     username=message.author.display_name, avatar_url=message.author.avatar_url)
+    #
+    # if message.channel.id in blacklist_channels:
+    #     return
+    # else:  # Otherwise do the logging thing
+    #     async with aiohttp.ClientSession() as session:
+    #         webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
+    #         await webhook.send(
+    #             f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {message.content}",
+    #             username=message.author.display_name, avatar_url=message.author.avatar_url)
 
     if message.author == bot.user:  # Don't listen to yourself
         return
@@ -268,7 +699,10 @@ async def on_message(message):
                 await webhook.send(
                     f"{result['censored-content']}",
                     username=f"{message.author.display_name} in DM", avatar_url=message.author.avatar_url)
-
+    if str(bot.user.id) in message.content:
+        reactions = ["<:iseeyou:876201272972304425>", "🇨", "🇦", "🇳", "▪️", "🇮", "◼️", "🇭", "🇪", "🇱", "🇵", "⬛", "🇾", "🇴", "🇺", "❓"]
+        for reaction in reactions:
+            await message.add_reaction(reaction)
     await bot.process_commands(message)  # Continue processing bot.commands
 
 
@@ -293,67 +727,176 @@ async def list(ctx: SlashContext, role: discord.Role):
     if len(check_len) > 2000:  # Ensure we don't go over the Discord embed limit
         title = f"**{count} members with the {role.name} role**"
         description = str(sorted(usernames,
-                                 key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
+                                 key=str.lower)).replace(', ', '\n').replace('[', '').replace(']', '').replace('\'', '')
         await ctx.send(f"{title}\n{description}\n\n`List too long to be sent as an embed`")
     else:
-        usernames = [m.mention for m in role.members]
+        usernames = [m.display_name for m in role.members]
         title = f"**{count} members with the {role.mention} role**"
         description = str(sorted(usernames,
-                                 key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
+                                 key=str.lower)).replace(', ', '\n').replace('[', '').replace(']', '').replace('\'', '')
         embed = discord.Embed(description=f"{title}\n{description}", color=role.color)
         embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
         await ctx.send(embed=embed)
 
 
-@bot.command(name='buttontest', pass_context=True)
+@slash.slash(name="purge",
+             guild_ids=bot.guild_ids,
+             description="Purges the defined amount of messages from this channel",
+             options=[
+                 create_option(
+                     name="amount",
+                     description="The amount you want to delete",
+                     option_type=option_type['integer'],
+                     required=True
+                 )
+             ])
 @check(has_perms)
-async def buttontest(ctx):
-    buttons = [
-        create_button(style=ButtonStyle.green, label="A green button"),
-        create_button(style=ButtonStyle.blue, label="A blue button")
-    ]
-    action_row = create_actionrow(*buttons)
+async def purge(ctx: SlashContext, limit: int = None):
+    if limit is None:
+        await ctx.send("You didn't tell me how many messages to purge", delete_after=20)
+        return
+    await ctx.channel.purge(limit=limit)
+    await ctx.send(f'Purged {limit} messages')
+    mod_log = bot.get_channel(897765157940396052)
+    title = f"Messages Purged"
+    embed = discord.Embed(title=title,
+                          color=ctx.message.author.color,
+                          description=f"Purged {limit} messages from <#{ctx.channel.id}>")
+    embed.set_footer(text=f"Discord name: {ctx.message.author.display_name}\nDiscord ID: {ctx.message.author.id}",
+                     icon_url=ctx.message.author.avatar_url)
+    await mod_log.send(embed=embed)
 
-    await ctx.send("Hello Friendo", components=[action_row])
-    # note: this will only catch one button press, if you want more, put this in a loop
-    button_ctx: ComponentContext = await wait_for_component(bot, components=action_row)
-    await button_ctx.edit_origin(content="You pressed a button!, I am unsure how to detect which button though")
+
+@slash.slash(name="clear",
+             guild_ids=bot.guild_ids,
+             description="Purges the defined amount of messages from this channel",
+             options=[
+                 create_option(
+                     name="amount",
+                     description="The amount you want to delete",
+                     option_type=option_type['integer'],
+                     required=True
+                 )
+             ])
+@check(has_perms)
+async def clear(ctx: SlashContext, limit: int = None):
+    if limit is None:
+        await ctx.send("You didn't tell me how many messages to purge", delete_after=20)
+        return
+    await ctx.channel.purge(limit=limit)
+    await ctx.send(f'Purged {limit} messages')
+    mod_log = bot.get_channel(897765157940396052)
+    title = f"Messages Purged"
+    embed = discord.Embed(title=title,
+                          color=ctx.message.author.color,
+                          description=f"Purged {limit} messages from <#{ctx.channel.id}>")
+    embed.set_footer(text=f"Discord name: {ctx.message.author.display_name}\nDiscord ID: {ctx.message.author.id}",
+                     icon_url=ctx.message.author.avatar_url)
+    await mod_log.send(embed=embed)
+
+
+@bot.command(pass_context=True)
+@check(has_perms)
+async def purge(ctx, limit: int=None):
+    if limit is None:
+        await ctx.send("You didn't tell me how many messages to purge", delete_after=20)
+        return
+    await ctx.channel.purge(limit=limit)
+    await ctx.send(f'Purged {limit} messages')
+    mod_log = bot.get_channel(897765157940396052)
+    title = f"Messages Purged"
+    embed = discord.Embed(title=title,
+                          color=ctx.message.author.color,
+                          description=f"Purged {limit} messages from <#{ctx.channel.id}>")
+    embed.set_footer(text=f"Discord name: {ctx.message.author.display_name}\nDiscord ID: {ctx.message.author.id}",
+                     icon_url=ctx.message.author.avatar_url)
+    await mod_log.send(embed=embed)
+
+
+@purge.error
+async def clear_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You cant do that!")
+
+
+@bot.command(description="Sends the welcome message in-case users need it again", category="Utility")
+async def welcomemsg(ctx):
+    # Send the welcome message
+    title = "Welcome to Prism SMP!"
+    description = """__General information__
+                    "If you need anything or have a question of any sort, contact a <@&858547638719086613>. Your issue will then go as far as necessary up the ladder.
+                    
+                    You can grab some self roles over in <#861288424640348160>.
+                    
+                    The IP is in <#858549386962272296>: you don't have to read the entirety of that as it is a tad outdated and due a complete rewrite... it still can give you a rough idea of where we are coming from and can give you an idea of your rights as a Prismian.
+                    
+                    Ask in <#869280855657447445> to get yourself whitelisted.
+                    
+                    Have fun!
+                    
+                    __Rules__
+                    ```Note: 
+                    Use common sense and don't be a douche. There is more to "rules" than those written here. This is not meant as an exhaustive list. Listen to the staff```
+                    
+                    **1) Social**
+                    1.1 Follow the [Discord ToS](https://discord.com/terms).
+                    
+                    1.2 No hate speech or harassment.
+                    
+                    1.3 Keep the server PG-13. Keep in mind some of our members might be younger than you. Set an example.
+                    
+                    1.4 Unwanted PvP (don't go around murdering people), stealing and griefing are severely punished.
+                    
+                    1.5 Don't spam in the discord or on the server.
+                    
+                    1.6 Respect player's claims and boundaries. Do not use farms without explicit permission. It is generally accepted to harvest crops for food and replant it unless the owner decides otherwise. If a sign says "keep out", keep out.
+                    
+                    **2) Technical**
+                    2.1 Any unofficial application/mod/client giving you an advantage over other players are considered cheating and are strictly prohibited. In case of doubt, contact the staff.
+                    
+                    **3) Building**
+                    3.1 Ask for permission from the players you want to settle nearby. 
+                    
+                    3.2 No building at less than 500 blocks from spawn (~x280 z230). The area around spawn is dedicated to community builds such as the Shopping District and the Mini-games District. Anything built there prior to this rule is safe to stay as long as their owners are Prism members.
+                    
+                    3.3 For Shopping District rules, see the pinned message in 🎙︱survival-adverts 
+                    
+                    3.4 Mega-projects are to be validated by staff: if you plan a build spanning more than 50 chunks please contact staff for approval prior to start building.
+                    
+                    3.5 Spawnproof anything you build on the Nether Roof.
+                    
+                    3.6 Consider lag when building farms. Examples: 
+                    3.6.1 Put your villagers in minecart or on double carpets to disable their pathfinding AI
+                    
+                    3.6.2 Put composters on top of your unlocked hoppers to disable their "sucking" action and reduce their impact on the server. """
+
+    embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
+    embed.set_thumbnail(url="https://cdn.discordapp.com/avatars/890176674237399040/5716879890391b6204a71b05a77b2258.webp?size=1024")
+    await ctx.send(embed=embed)
 
 
 @bot.event
 async def on_command_error(ctx, error):
-    print(error)
-    try:
-        name = ctx.message.author.display_name
-    except AttributeError:
-        name = ctx.author.display_name
-    try:
-        icon = ctx.message.author.avatar_url
-    except AttributeError:
-        icon = ctx.author.avatar_url
-    if isinstance(error, commands.errors.CheckFailure):
-        embed = discord.Embed(title="We ran into an error", description="You are not staff", color=discord.Color.red())
-        embed.set_footer(text=f"Caused by {name}", icon_url=icon)
-        await ctx.send(embed=embed)
-    elif isinstance(error, commands.errors.MissingRequiredArgument):
-        embed = discord.Embed(title="We ran into an error", description="You forgot to define something",
-                              color=discord.Color.red())
-        embed.set_footer(text=f"Caused by {name}", icon_url=icon)
-        await ctx.send(embed=embed)
-    elif isinstance(error, commands.errors.BotMissingPermissions):
-        embed = discord.Embed(title="We ran into an error", description="I am missing permissions",
-                              color=discord.Color.red())
-        embed.set_footer(text=f"Caused by {name}", icon_url=icon)
-        await ctx.send(embed=embed)
-    elif isinstance(error, commands.errors.CommandNotFound):
-        try:
-            print("Doing nothing since this command doesn't exist")
-        except:
-            return
-    else:
-        embed = discord.Embed(title="We ran into an undefined error", description=error, color=discord.Color.red())
-        embed.set_footer(text=f"Caused by {name}", icon_url=icon)
-        await ctx.send(embed=embed)
+    if isinstance(error, CommandNotFound):
+        return
+    embed = discord.Embed(title=f"**Error in command: {ctx.command}**", description=f"```\n{error}\n```", colour=discord.Color.red())
+    await ctx.send(embed=embed)
+    raise error
+
+
+@bot.event
+async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
+    # print(payload)
+    if int(payload.message_id) == 920460790354567258:
+        channel = bot.get_channel(int(payload.data["channel_id"]))
+        message = await channel.fetch_message(payload.message_id)
+        embed = discord.Embed(title="Changelog changed",
+                              url=message.jump_url,
+                              description=str(message.content).replace(':tick:', ':white_check_mark:'),
+                              color=discord.colour.Color.blurple())
+        channel = bot.get_channel(897765157940396052)
+        await channel.send(embed=embed)
+        # print(message)
 
 
 @bot.event
@@ -362,43 +905,93 @@ async def on_member_join(member):
         if member.bot:  # Bloody bots
             return
         else:
-            # Send a message to the mods
-            mod_log = bot.get_channel(897765157940396052)
-            title = f"{member.display_name} joined the server"
-            embed = discord.Embed(title=title, color=discord.Color.green())
-            embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}", icon_url=member.avatar_url)
-            date_format = "%a, %d %b %Y %I:%M %p"
-            embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
-            await mod_log.send(embed=embed)
-            # Send the welcome message
+            if time.time() - member.created_at.timestamp() < 2592000:
+                # Send a message to the mods
+                mod_log = bot.get_channel(897765157940396052)
+                title = f"{member.display_name} is potentially suspicious"
+                embed = discord.Embed(title=title, color=discord.Color.red())
+                embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}",
+                                 icon_url=member.avatar_url)
+                date_format = "%a, %d %b %Y %I:%M %p"
+                embed.set_thumbnail(
+                    url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/Warning.svg/1200px-Warning.svg.png")
+                embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
+                await mod_log.send(embed=embed)
+            else:
+                # Send a message to the mods
+                mod_log = bot.get_channel(897765157940396052)
+                title = f"{member.display_name} joined the server"
+                embed = discord.Embed(title=title, color=discord.Color.green())
+                embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}", icon_url=member.avatar_url)
+                date_format = "%a, %d %b %Y %I:%M %p"
+                embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
+                await mod_log.send(embed=embed)
+            # Send the welcome banner
             channel = bot.get_channel(858547359804555267)
-            embed = discord.Embed(colour=discord.Colour.green())
+            messages = [
+                f"Welcome {member.name}\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"Hi {member.name}!\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"{member.name} joined us\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"{member.name} is *one of us*\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"Hoi {member.name}\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"{member.name} is here!\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"Welcome to the party {member.name}\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
+                f"Hey `@everyone` {member.name} joined Prism\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>"
+            ]
+            await channel.send(random.choice(messages))
             req = PreparedRequest()
-            req.prepare_url(
-                url='https://api.xzusfin.repl.co/card?',
-                params={
-                    'avatar': str(member.avatar_url_as(format='png')),
-                    'middle': 'everybody welcome',
-                    'name': str(member.name),
-                    'bottom': str('to ' + member.guild.name),
-                    'text': '#CCCCCC',
-                    'avatarborder': '#CCCCCC',
-                    'avatarbackground': '#CCCCCC',
-                    'background': 'https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg?1540053395'
-                }
-            )
-            print(req.url)
-            embed.set_image(url=req.url)
-            await channel.send(embed=embed)
-            title = "Welcome to Prism SMP!"
-            description = "Please look at the <#861317568807829535> when you have a minute.\n\n" \
-                          "You can grab some self roles over in <#861288424640348160>.\n" \
-                          "Join the server at least once (the IP is in <#858549386962272296>" \
-                          " [You don't have to read the entirety of that])" \
-                          " then ask in <#869280855657447445> to get yourself whitelisted."
-            embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
-            embed.set_footer(text=member.name, icon_url=member.avatar_url)
-            await member.send(embed=embed)
+            users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
+            banner_id = users["banner"]
+            # If statement because the user may not have a banner
+            if not str(banner_id) == "None":
+                banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
+                req.prepare_url(
+                    url='https://api.xzusfin.repl.co/card?',
+                    params={
+                        'avatar': str(member.avatar_url_as(format='png')),
+                        'middle': 'Everyone welcome',
+                        'name': str(member.name),
+                        'bottom': f'To {member.guild.name}',
+                        'text': member.color,
+                        'avatarborder': member.color,
+                        'avatarbackground': member.color,
+                        'background': banner_url
+                    }
+                )
+                body = dict(parse_qsl(req.body))
+                if 'code' in body:
+                    print("Not sending a banner due to invalid response")
+                    print(body)
+                    print(req.url)
+                else:
+                    img_data = requests.get(req.url).content
+                    with open('Banner.png', 'wb') as handler:
+                        handler.write(img_data)
+                    await channel.send(file=discord.File('Banner.png'))
+            else:
+                req.prepare_url(
+                    url='https://api.xzusfin.repl.co/card?',
+                    params={
+                        'avatar': str(member.avatar_url_as(format='png')),
+                        'middle': 'Everybody welcome',
+                        'name': str(member.name),
+                        'bottom': f'To {member.guild.name}',
+                        'text': '#CCCCCC',
+                        'avatarborder': '#CCCCCC',
+                        'avatarbackground': '#CCCCCC',
+                        'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"
+                    }
+                )
+                body = dict(parse_qsl(req.body))
+                if 'code' in body:
+                    print("Not sending a banner due to invalid response")
+                    print(body)
+                    print(req.url)
+                else:
+                    img_data = requests.get(req.url).content
+                    with open('Banner.png', 'wb') as handler:
+                        handler.write(img_data)
+                    await channel.send(file=discord.File('Banner.png'))
             # Give the user the New Member role
             role = discord.utils.get(member.guild.roles, name='New Member')
             await member.add_roles(role)
@@ -410,6 +1003,24 @@ async def on_member_remove(member):
         if member.bot:
             return
         else:
+            messages = [
+                f"Goodbye {member.name}",
+                f"It appears {member.name} has left",
+                f"{member.name} has disappeared :(",
+                f"We wish {member.name} well in their travels",
+                f"Toodles {member.name}!",
+                f"{member.name} found love elsewhere :(",
+                f"{member.name} left\nSee you later alligator",
+                f"{member.name} left\nBye Felicia",
+                f"Some cause happiness wherever they go; {member.name} causes it whenever they go",
+                f"{member.name} left\nSo long, and thanks for all the fish!",
+                f"{member.name} left\nWe are really going to miss trying to avoid you around here",
+                f"{member.name} left\nGoodbye, Vietnam! That’s right, I’m history, I’m outta here, "
+                f"I got the lucky ticket home, baby",
+                f"Welp, I guess {member.name} died. That's the only reason I can imagine anyone would leave us"
+            ]
+            general = bot.get_channel(858547359804555267)
+            await general.send(random.choice(messages))
             channel = bot.get_channel(897765157940396052)
             title = f"{member.display_name} left the server"
             embed = discord.Embed(title=title, color=discord.Color.red())
@@ -423,114 +1034,13 @@ async def on_member_remove(member):
             await channel.send(embed=embed)
 
 
-@bot.command(name='lp', pass_context=True)
+@bot.command(name='lp', pass_context=True, description="Adds to the permission changelog", category="Moderation")
 @check(has_perms)
 async def lp(ctx, *, message):
     await ctx.message.delete()
     changes = f"```diff\n{message} ```"
     embed = discord.Embed(title="Permission Changelog", description=changes, color=0x00ff40)
     embed.set_footer(text=f"Issued by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
-    await ctx.send(embed=embed)
-
-
-@bot.command(name='game', aliases=['gamecommands', 'gc'], pass_context=True)
-async def game(ctx):
-    help = "**Discord Commands:** (can only be run in #in-game-chat)\n`/inv` Shows the contents of your inventory\n" \
-           "`/ender` Shows the contents of your enderchest\n\n**In-game Commands**\n" \
-           "`[ec]` Broadcasts the contents of your enderchest\n`[inv]` Broadcasts the contents of your inventory\n" \
-           "`[item]` Broadcasts your currently held item\n`[pos]` Broadcasts your position\n" \
-           "`[ping]` Catching on yet?\n`/t <message>` Shortcut for team message"
-    embed = discord.Embed(title="Game Command Help", description=help, color=ctx.message.author.color)
-    embed.set_footer(text=f"Issued by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
-    await ctx.send(embed=embed)
-
-
-@slash.slash(name="help",
-             guild_ids=bot.guild_ids,
-             description="displays the help")
-async def help(ctx):
-    help = f"**Hello Friendo!**\nI am {bot_name}. I'm designed to make your life here easier.\n" \
-           "If you run into any issues please ping <@324504908013240330>"
-    embed = discord.Embed(title="Help", description=help, color=ctx.author.color)
-    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
-    embed.set_thumbnail(
-        url="https://cdn.discordapp.com/icons/858547359804555264/34eacdf2f8da259c1bf88ba6cbf087c7.jpg")
-    await ctx.send(embed=embed)
-
-
-@slash.slash(name="game-commands",
-             guild_ids=bot.guild_ids,
-             description="displays the list of game commands")
-async def game(ctx):
-    help = "**Discord Commands:** (can only be run in #in-game-chat)\n`/inv` Shows the contents of your inventory\n" \
-           "`/ender` Shows the contents of your enderchest\n\n**In-game Commands**\n" \
-           "`[ec]` Broadcasts the contents of your enderchest\n`[inv]` Broadcasts the contents of your inventory\n" \
-           "`[item]` Broadcasts your currently held item\n`[pos]` Broadcasts your position\n" \
-           "`[ping]` Catching on yet?\n`/t <message>` Shortcut for team message"
-    embed = discord.Embed(title="Game Command Help", description=help, color=ctx.author.color)
-    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
-    await ctx.send(embed=embed)
-
-
-@bot.command(name='commands', aliases=['pc', 'bc'], pass_context=True)
-async def commands(ctx):
-    help = "**User Commands:**\n`/iam` Allows you to choose roles\n`/iamnot` Removes those roles\n" \
-           "`/reminder create` Kinda self-explanatory\n`/reminder view` See above\n" \
-           "`/suggestion create` Creates a suggestion for the staff to review\n" \
-           "`/spotify` Easily share what you're currently listening to\n`$play <song>` Plays music in your VC\n" \
-           "`$skip` Skips your song"
-    embed = discord.Embed(title=f"{bot_name} Command Help", description=help, color=ctx.message.author.color)
-    embed.set_footer(text=f"Issued by {ctx.message.author.display_name}", icon_url=ctx.message.author.avatar_url)
-    await ctx.send(embed=embed)
-
-
-@slash.slash(name="commands",
-             guild_ids=bot.guild_ids,
-             description=f"displays the list of {bot_name} commands")
-async def commands(ctx):
-    help = "**User Commands:**\n`/iam` Allows you to choose roles\n`/iamnot` Removes those roles\n" \
-           "`/reminder create` Kinda self-explanatory\n`/reminder view` See above\n" \
-           "`/suggestion create` Creates a suggestion for the staff to review\n" \
-           "`/spotify` Easily share what you're currently listening to\n`$play <song>` Plays music in your VC\n" \
-           "`$skip` Skips your song"
-    embed = discord.Embed(title=f"{bot_name} Command Help", description=help, color=ctx.author.color)
-    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
-    await ctx.send(embed=embed)
-
-
-@slash.slash(name="staff-commands",
-             guild_ids=bot.guild_ids,
-             description="displays the list of staff commands")
-@check(has_perms)
-async def staff(ctx):
-    help = "**Staff Commands**\n" \
-           "`/self-roles add` Adds a role to the `/iam` command\n`/self-roles remove` Does the opposite\n" \
-           "`/poll` Creates a poll for people to vote on\n" \
-           "`/suggestion view` A nifty menu for viewing suggestions\n" \
-           "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n" \
-           "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n" \
-           "`/whitelist <mention discord user>` Whitelists the user\n" \
-           "'/arrest <user> <reason>` Arrests the user\n" \
-           "`/release <user> <reason>` Releases the user from police custody"
-    embed = discord.Embed(title=f"{bot_name} Command Help", description=help, color=ctx.author.color)
-    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
-    await ctx.send(embed=embed)
-
-
-@bot.command(name='staff', aliases=['staffcommands', 'sc'], pass_context=True)
-@check(has_perms)
-async def staff(ctx: SlashContext):
-    help = "**Staff Commands**\n" \
-           "`/self-roles add` Adds a role to the `/iam` command\n`/self-roles remove` Does the opposite\n" \
-           "`/poll` Creates a poll for people to vote on\n" \
-           "`/suggestion view` A nifty menu for viewing suggestions\n" \
-           "`$warn <user> <reason>` Warns the mentioned user for the stated reason\n" \
-           "`$ban <user> <reason>` Bans the mentioned user for the stated reason\n" \
-           "`/whitelist <mention discord user>` Whitelists the user\n" \
-           "'/arrest <user> <reason>` Arrests the user\n" \
-           "`/release <user> <reason>` Releases the user from police custody"
-    embed = discord.Embed(title=f"{bot_name} Command Help", description=help, color=ctx.message.author.color)
-    embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     await ctx.send(embed=embed)
 
 
@@ -593,7 +1103,7 @@ async def whitelist(ctx: SlashContext, member: discord.Member):
     await ctx.send(embed=embed, hidden=True)
 
 
-@bot.command(name='whitelist', pass_context=True)
+@bot.command(name='whitelist', pass_context=True, description="Adds a user to the whitelisted role", category="Moderation")
 @check(has_perms)
 async def whitelist(ctx, member: discord.Member):
     await ctx.message.delete()
@@ -754,21 +1264,6 @@ def timeformat(secs):
     dec.start()
 
 
-@bot.event
-async def on_member_update(before: discord.Member, after: discord.Member):
-    RolesJson.seek(0)
-    a = json.load(RolesJson)
-    RolesJson.seek(0)
-    for role in after.roles:
-        if role in before.roles:
-            continue
-        h = str(role.id)
-        for roleTup in a["roles"]:
-            if h == roleTup[0]:
-                RJD[h].append([after.id, roleTup[1]])
-                a[h].append([after.id, roleTup[1] + round(time.time())])
-    jsondump(a)
-
 
 # Command to set a role to expire
 @slash.slash(name="role-expire",
@@ -820,7 +1315,7 @@ async def expire(ctx: Context, role: discord.Role, *, time: str):
         f"✓ set {role.name} to expire {str(Duration(time)).replace('<Duration ', 'after ').replace('>', '')}")
 
 
-@bot.command()
+@bot.command(description="Sets a role to expire", category="Moderation")
 @check(has_perms)
 async def expire(ctx: Context, role: discord.Role, *, time: str):
     print(role.permissions)
@@ -879,7 +1374,7 @@ async def unexpire(ctx, role: discord.Role):
     await ctx.send(f"✓ set {role.name} to not expire")
 
 
-@bot.command()
+@bot.command(description="Removes a role from expiration", category="Moderation")
 @check(has_perms)
 async def unexpire(ctx, role: discord.Role):
     RolesJson.seek(0)
@@ -947,7 +1442,7 @@ async def _help(ctx: discord.ext.commands.Context):
     await ctx.send(embed=help_embed)
 
 
-@bot.command(name="role-help")
+@bot.command(name="role-help", description="Shows the role expiry settings help", category="Moderation")
 async def _help(ctx: discord.ext.commands.Context):
     help_embed = discord.Embed(
         title=f"{bot_name} >> Help",
@@ -1021,7 +1516,7 @@ async def addperm(ctx: Context, role: discord.Role):
         await ctx.send("That role already has permissions!")
 
 
-@bot.command()
+@bot.command(description="Adds a role to be allowed to manage the bot", category="Moderation")
 @has_permissions(manage_roles=True)
 async def addperm(ctx: Context, role: discord.Role):
     r = role.id
@@ -1061,7 +1556,7 @@ async def delperm(ctx: Context, role: discord.Role):
         await ctx.send("I don't think that role had permissions :confused:")
 
 
-@bot.command()
+@bot.command(description="Removes a role from managing the bot", category="Moderation")
 @has_permissions(manage_roles=True)
 async def delperm(ctx: Context, role: discord.Role):
     r = role.id
@@ -1105,7 +1600,7 @@ async def viewroles(ctx: Context):
     await ctx.send(embed=roles_embed)
 
 
-@bot.command()
+@bot.command(description="Lists the roles that are set to expire", category="Moderation")
 async def viewroles(ctx: Context):
     Roles = []
     for role in RJD["roles"]:
@@ -1151,7 +1646,7 @@ async def viewperms(ctx: Context):
     await ctx.send(embed=perms_embed)
 
 
-@bot.command()
+@bot.command(description="Views the roles that are allowed to manage the bot", category="Moderation")
 async def viewperms(ctx: Context):
     perms = []
     for role in RJD["perms"]:
@@ -1176,9 +1671,76 @@ async def ping(ctx):
     await ctx.send(f'My ping is {round((bot.latency * 1000), 3)} ms!')
 
 
-@bot.command()
+@bot.command(description=f"Checks {bot_name}'s ping", category="")
 async def ping(ctx):
     await ctx.send(f'My ping is {round((bot.latency * 1000), 3)} ms!')
+
+
+@slash.context_menu(target=ContextMenuType.USER,
+                    name="Who is this?",
+                    guild_ids=bot.guild_ids)
+async def my_new_command(ctx: MenuContext, user: discord.Member = None):
+    user = ctx.target_author
+    if user.activities:  # check if the user has an activity
+        if str(user.activities[0].type) == "ActivityType.playing":
+            activity = "Playing:"
+        elif str(user.activities[0].type) == "ActivityType.streaming":
+            activity = "Streaming:"
+        elif str(user.activities[0].type) == "ActivityType.listening":
+            activity = "Listening to:"
+        elif str(user.activities[0].type) == "ActivityType.watching":
+            activity = "Watching"
+        elif str(user.activities[0].type) == "ActivityType.custom":
+            activity = ""
+        elif str(user.activities[0].type) == "ActivityType.competing":
+            activity = "Competing in:"
+        else:
+            activity = "Funkiness"
+        has_activity = True
+    else:  # if they don't we can't reference it
+        has_activity = False
+
+    top_role = user.roles[-1]  # first element in roles is `@everyone` and last is top role
+    embed = discord.Embed(color=top_role.color, description=user.mention)
+    embed.set_author(name=str(user), icon_url=user.avatar_url)
+    if str(user.id) == "709089341007200288":  # FT :POGGERS:
+        embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/861289278374150164/917731281503150090/"
+                                "3ee9a6c54e15a2929d276cd9ba366442.gif")
+    elif str(user.id) == "510748531926106113":  # Orang
+        embed.set_thumbnail(url="https://c.tenor.com/aw-QZPYpGmkAAAAM/carrot-garden.gif")
+    elif str(user.id) == "103523893834166272":  # Apo
+        embed.set_thumbnail(url="https://thumbs.gfycat.com/FrayedUncommonGrosbeak-size_restricted.gif")
+    elif str(user.id) == "690864077861421066":  # Alina
+        embed.set_thumbnail(url="https://media4.giphy.com/media/QsTGfN7bYXUm4/200.gif")
+    elif str(user.id) == "324504908013240330":  # ME!!!!!!!!111!!
+        embed.set_thumbnail(url="https://64.media.tumblr.com/e12f4de9050b40e88d76d396bd848c08/"
+                                "tumblr_oi94oaK9Wl1rcqnnxo1_r1_400.gifv")
+    else:
+        embed.set_thumbnail(url=user.avatar_url)
+    if has_activity:
+        try:
+            if str(user.activities[0].details) == "None":
+                embed.add_field(name="Current Activity",
+                                value=f"{activity} {user.activities[0].name}", inline=False)
+            else:
+                embed.add_field(name="Current Activity",
+                                value=f"{activity} {user.activities[0].name} | {user.activities[0].details}",
+                                inline=False)
+        except:
+            embed.add_field(name="Current Activity",
+                            value=f"{activity} {user.activities[0].name}", inline=False)
+    joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
+    discord_joined_time = str((user.created_at - datetime(1970, 1, 1)).total_seconds()).split('.')
+
+    embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
+    members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
+    embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
+    embed.add_field(name="Joined Discord", value=f"<t:{discord_joined_time[0]}:R>", inline=False)
+    if len(user.roles) > 1:
+        role_string = ' '.join([r.mention for r in user.roles][1:])
+        embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
+    embed.set_footer(text='ID: ' + str(user.id))
+    return await ctx.send(embed=embed, hidden=True)
 
 
 @slash.slash(name="whois",
@@ -1258,22 +1820,117 @@ async def whois(ctx: Context, *, user: discord.Member = None):
         except:
             embed.add_field(name="Current Activity",
                             value=f"{activity} {user.activities[0].name}", inline=False)
-    # We get an output of xxxxxxxx.xxx, this is an invalid epoch, so we strip everything after the "."
     joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
     discord_joined_time = str((user.created_at - datetime(1970, 1, 1)).total_seconds()).split('.')
-
+    embed.add_field(name="Discord Name", value=f"{user.name}#{user.discriminator}")
     embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
     members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
     embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
     embed.add_field(name="Joined Discord", value=f"<t:{discord_joined_time[0]}:R>", inline=False)
     if len(user.roles) > 1:
-        role_string = ' '.join([r.mention for r in user.roles][1:])
+        res = user.roles[::-1]
+        role_string = ' '.join([r.mention for r in res][:-1])
         embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
     embed.set_footer(text='ID: ' + str(user.id))
-    return await ctx.send(embed=embed)
-
+    await ctx.send(embed=embed)
+    # Game stuffs
+    IP = config("GAME_IP")
+    url = f"http://{IP}/players/{user.display_name}/stats"
+    # print(f"http://{IP}/players/{user.display_name}/stats")
+    page = requests.get(url)
+    stats = json.loads(page.text)
+    try:
+        if stats['error']:
+            return
+    except:
+        # Game time
+        sec = int(stats["time"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            game_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            game_time = f"{min_value} minutes"
+        # Death time
+        sec = int(stats["death"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            death_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            death_time = f"{min_value} minutes"
+        embed = discord.Embed(color=discord.colour.Color.red(),
+                              title=f"{user.display_name}'s current game stats")
+        embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Kills:", value=stats["kills"], inline=True)
+        embed.add_field(name="Deaths:", value=stats["deaths"], inline=True)
+        embed.add_field(name="XP level:", value=stats["level"], inline=True)
+        embed.add_field(name="Health:", value=stats["health"], inline=True)
+        embed.add_field(name="Hunger:", value=stats["food"], inline=True)
+        embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
+        embed.add_field(name="World:", value=stats["world"], inline=True)
+        embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay")
+        await ctx.send(embed=embed)
 
 @bot.command()
+async def game(ctx, user: discord.Member = None):
+    if user is None:
+        user = ctx.guild.get_member(ctx.author.id)
+    # Game stuffs
+    IP = config("GAME_IP")
+    url = f"http://{IP}/players/{user.display_name}/stats"
+    # print(f"http://{IP}/players/{user.display_name}/stats")
+    page = requests.get(url)
+    stats = json.loads(page.text)
+    try:
+        if stats['error']:
+            return
+    except:
+        # Game time
+        sec = int(stats["time"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            game_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            game_time = f"{min_value} minutes"
+        # Death time
+        sec = int(stats["death"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            death_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            death_time = f"{min_value} minutes"
+        embed = discord.Embed(color=discord.colour.Color.red(),
+                              title=f"{user.display_name}'s current game stats")
+        embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Kills:", value=stats["kills"], inline=True)
+        embed.add_field(name="Deaths:", value=stats["deaths"], inline=True)
+        embed.add_field(name="XP level:", value=stats["level"], inline=True)
+        embed.add_field(name="Health:", value=stats["health"], inline=True)
+        embed.add_field(name="Hunger:", value=stats["food"], inline=True)
+        embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
+        embed.add_field(name="World:", value=stats["world"], inline=True)
+        embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay")
+        await ctx.send(embed=embed)
+
+
+@bot.command(description="Shows some info on users", category="Utility")
 async def whois(ctx, *, user: discord.Member = None):
     if user is None:
         user = ctx.guild.get_member(ctx.author.id)
@@ -1342,16 +1999,62 @@ async def whois(ctx, *, user: discord.Member = None):
                             value=f"{activity} {user.activities[0].name}", inline=False)
     joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split('.')
     discord_joined_time = str((user.created_at - datetime(1970, 1, 1)).total_seconds()).split('.')
-
+    embed.add_field(name="Discord Name", value=f"{user.name}#{user.discriminator}")
     embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
     members = sorted(ctx.guild.members, key=lambda m: m.joined_at)
     embed.add_field(name="Join Position", value=str(members.index(user) + 1), inline=False)
     embed.add_field(name="Joined Discord", value=f"<t:{discord_joined_time[0]}:R>", inline=False)
     if len(user.roles) > 1:
-        role_string = ' '.join([r.mention for r in user.roles][1:])
+        res = user.roles[::-1]
+        role_string = ' '.join([r.mention for r in res][:-1])
         embed.add_field(name="Roles [{}]".format(len(user.roles) - 1), value=role_string, inline=False)
     embed.set_footer(text='ID: ' + str(user.id))
-    return await ctx.send(embed=embed)
+    await ctx.send(embed=embed)
+    # Game stuffs
+    IP = config("GAME_IP")
+    url = f"http://{IP}/players/{user.display_name}/stats"
+    # print(f"http://{IP}/players/{user.display_name}/stats")
+    page = requests.get(url)
+    stats = json.loads(page.text)
+    try:
+        if stats['error']:
+            return
+    except:
+        # Game time
+        sec = int(stats["time"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            game_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            game_time = f"{min_value} minutes"
+        # Death time
+        sec = int(stats["death"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            death_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            death_time = f"{min_value} minutes"
+        embed = discord.Embed(color=discord.colour.Color.red(),
+                              title=f"{user.display_name}'s current game stats")
+        embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Kills:", value=stats["kills"], inline=True)
+        embed.add_field(name="Deaths:", value=stats["deaths"], inline=True)
+        embed.add_field(name="XP level:", value=stats["level"], inline=True)
+        embed.add_field(name="Health:", value=stats["health"], inline=True)
+        embed.add_field(name="Hunger:", value=stats["food"], inline=True)
+        embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
+        embed.add_field(name="World:", value=stats["world"], inline=True)
+        embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay")
+        await ctx.send(embed=embed)
 
 
 @slash.slash(name="doggo",
@@ -1374,7 +2077,7 @@ async def catto(ctx: Context):
     await ctx.send(data["file"])
 
 
-@bot.command(name='auth', pass_context=True)
+@bot.command(name='auth', pass_context=True, description="Checks the validity of a token", category="Utility")
 async def auth(ctx, message):
     nonce = "SuperSecretNonce"
     f = f"https://api2.yubico.com/wsapi/2.0/verify?id=1&otp={message}&nonce={nonce}"
@@ -1401,11 +2104,28 @@ async def auth(ctx, message):
                 log = f"<p class=\"white\">Recieved an invalid nonce"
                 with open("messages.log", "a", encoding="utf8") as text_file:
                     print(log, file=text_file)
-                return
+
         else:
             await ctx.send("Something funky is going on")
     else:
         await ctx.send("Something funky is going on")
+
+
+@tasks.loop(hours=12)
+async def prismian():
+    guild = bot.get_guild(858547359804555264)
+    for member in bot.get_guild(858547359804555264).members:
+        prismian_role = discord.utils.get(guild.roles, name='Prismian')
+        new_role = discord.utils.get(guild.roles, name='New Member')
+        if prismian_role not in member.roles and new_role in member.roles:
+            duration = datetime.now() - member.joined_at
+            hours, remainder = divmod(int(duration .total_seconds()), 3600)
+            days, hours = divmod(hours, 24)
+            if days >= 14:
+                mod_log = bot.get_channel(897765157940396052)
+                await mod_log.send(f"{member.display_name} has been a new member for {days} days and upgraded to Prismian today!")
+                await member.remove_roles(new_role)
+                await member.add_roles(prismian_role)
 
 
 @slash.slash(name="arrest",
@@ -1435,7 +2155,7 @@ async def arrest(ctx: SlashContext, user, reason):
     arrestee = discord.utils.get(ctx.guild.roles, name='Arrestee')
     for member in ctx.guild.members:
         if arrestee in member.roles:
-            member.remove_roles(arrestee)
+            await member.remove_roles(arrestee)
     await user.add_roles(arrestee)
     await police_station.purge(limit=int(10000))
     await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Arrestee"), send_messages=True,
@@ -1449,8 +2169,48 @@ async def arrest(ctx: SlashContext, user, reason):
 
     await mod_log.send(f'{ctx.author.display_name} cleared the <#866304038524813352> chat and arrested '
                        f'{user.display_name} for {reason}')
-    await police_station.send(f"{user.mention} you have been arrested by {ctx.author.mention} for "
-                              f"{reason}. Please stand-by")
+    await police_station.send(f"{user.mention} you have been arrested for "
+                              f"{reason}. Please stand-by\n"
+                              f"```You do not have to say anything. But, it may harm your defence if you do not mention"
+                              f" when questioned something which you later rely on in court. "
+                              f"Anything you do say may be given in evidence. "
+                              f"You have the right to have a lawyer present both during questioning and during court"
+                              f" proceedings.```")
+
+
+@bot.command()
+@check(has_perms)
+async def arrest(ctx: SlashContext, user: discord.Member = None, *, reason: str):
+    if user is None:
+        await ctx.send("Who am I arresting?", hidden=True)
+    mod_log = bot.get_channel(897765157940396052)
+    police_station = bot.get_channel(866304038524813352)
+    whitelist = discord.utils.get(ctx.guild.roles, name='Whitelisted')
+    await user.remove_roles(whitelist)
+    arrestee = discord.utils.get(ctx.guild.roles, name='Arrestee')
+    for member in ctx.guild.members:
+        if arrestee in member.roles:
+            await member.remove_roles(arrestee)
+    await user.add_roles(arrestee)
+    await police_station.purge(limit=int(10000))
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Arrestee"), send_messages=True,
+                                         read_messages=True, reason=reason)
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Moderator"), send_messages=True,
+                                         read_messages=True, reason=reason)
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Administrator"), send_messages=True,
+                                         read_messages=True, reason=reason)
+    await police_station.set_permissions(discord.utils.get(ctx.guild.roles, name="Adjudicator"), send_messages=True,
+                                         read_messages=True, reason=reason)
+
+    await mod_log.send(f'{ctx.author.display_name} cleared the <#866304038524813352> chat and arrested '
+                       f'{user.display_name} for {reason}')
+    await police_station.send(f"{user.mention} you have been arrested for "
+                              f"{reason}. Please stand-by\n"
+                              f"```You do not have to say anything. But, it may harm your defence if you do not mention"
+                              f" when questioned something which you later rely on in court. "
+                              f"Anything you do say may be given in evidence. "
+                              f"You have the right to have a lawyer present both during questioning and during court"
+                              f" proceedings.```")
 
 
 @slash.slash(name="release",
@@ -1497,11 +2257,20 @@ async def kill(ctx: Context):
     sys.exit()
 
 
-@bot.command()
+@bot.command(description="Kills any instance of the bot", category="Owner Only")
 @is_owner()
 async def kill(ctx: Context):
     await ctx.send("https://c.tenor.com/huJuK_zUxSAAAAAM/im-dying-jake.gif")
     sys.exit()
+
+
+@bot.command(description="Lists all the guilds emojis", category="Owner Only")
+@is_owner()
+async def emojilist(ctx):
+    await ctx.message.delete()
+    for emoji in ctx.guild.emojis:
+        creation = str((emoji.created_at - datetime(1970, 1, 1)).total_seconds()).split('.')
+        await ctx.send(f"{emoji} {emoji.name} ({emoji.id}) Created: <t:{creation[0]}:R>")
 
 
 bot.run(toe_ken)

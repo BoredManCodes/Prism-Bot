@@ -105,118 +105,6 @@ bot_name = "Prism Bot"
 filename = "roles.json"
 status = ""
 
-#
-# # Returns a string if the timedelta is shorter than the minimum
-# def bad_time(delta: timedelta) -> Optional[str]:
-#     if delta.total_seconds() <= 0:
-#         return 'I cannot work backwards... maybe one day.'
-#     elif delta.total_seconds() < (60 * 5):
-#         return 'Minimum reminder time is 5 minutes, please try again.'
-#
-#
-# # The $remind command
-# @bot.command(name='remind')
-# async def remind(ctx, time: to_timedelta, *, what):
-#     if bad_time_string := bad_time(time):  # ensure user isn't dumb
-#         return await ctx.send(bad_time_string)
-#
-#     now = ctx.message.created_at
-#     when = now + time
-#
-#     await db.all_reminders.insert_one({  # add reminder to db
-#         'user_id': ctx.author.id,
-#         'channel_id': ctx.channel.id,
-#         'next_time': when,
-#         'content': what,
-#         'recurrent_time': False,
-#         'done': False,
-#     })
-#
-#     await ctx.send(f"I'll remind you on {when.strftime('%x %X')} (utc)")
-#
-#
-# # Remind every x
-# @bot.command()
-# async def every(ctx, time: str, *, what):
-#
-#     delta = to_timedelta(time)
-#
-#     if bad_time_string := bad_time(delta):  # ensure user isn't dumb
-#         return await ctx.send(bad_time_string)
-#
-#     now = ctx.message.created_at
-#     when = now + delta
-#     await db.all_reminders.insert_one({
-#         'user_id': ctx.author.id,
-#         'channel_id': ctx.channel.id,
-#         'next_time': when,
-#         'content': what,
-#         'recurrent_time': time,
-#         'done': False,
-#     })
-#     await ctx.send(f"I'll remind you every {delta}.\n"
-#                    f"Next reminder on {when.strftime('%x %X')} (utc)")
-#
-#
-# # Delete recurring reminders
-# @bot.command()
-# async def delete(self, ctx):
-#     trimmer = Trimmer(max_length=140)
-#     reminders = await db.all_reminders.find({'user_id': ctx.author.id, 'done': False}).to_list(length=None)
-#     options = {}
-#     for i, reminder in enumerate(reminders, start=1):
-#         channel = self.bot.get_channel(reminder['channel_id'])
-#         options[
-#
-#             (f"**{i})** Every: __{reminder['recurrent_time']}__ "
-#              if reminder['recurrent_time']
-#              else f"On: __{reminder['next_time'].strftime('%x %X')}__ ") +
-#             (f"In: {channel.mention}" if channel else "") +
-#             f"| {trimmer(reminder['content'])}\n\n"
-#             ] = reminder
-#     if options:
-#         choice = await multichoice(ctx, list(options))
-#         if choice:
-#             reminder = options[choice]
-#             reminder['done'] = True
-#             await db.all_reminders.replace_one({'_id': ObjectId(reminder['_id'])}, reminder)
-#             await ctx.send('Done!')
-#         else:
-#             await ctx.send('Cancelled!')
-#     else:
-#         await ctx.send("You don't have any active reminders")
-#
-#
-# @tasks.loop(seconds=5)  # every 5 seconds check if a reminder is due
-# async def remind(self):
-#     now = datetime.utcnow()
-#     reminders = db.all_reminders.find({'done': False, 'next_time': {'$lte': now}})
-#     async for reminder in reminders:
-#         channel = self.bot.get_channel(reminder['channel_id'])
-#         guild = getattr(channel, 'guild', None)
-#         try:
-#             if guild:
-#                 author = await guild.fetch_member(reminder['user_id'])
-#             else:
-#                 author = await self.bot.fetch_user(reminder['user_id'])
-#         except NotFound:
-#             if reminder['next_time'] <= (now - timedelta(days=2)):
-#                 reminder['done'] = True
-#                 await db.all_reminders.replace_one({'_id': reminder['_id']}, reminder)
-#             continue
-#         else:
-#             if author and channel:
-#                 await channel.send(f"{author.mention}! Here's your reminder:\n"
-#                                    f">>> {reminder['content']}")
-#
-#                 if (time := reminder['recurrent_time']) is not False:
-#                     reminder['next_time'] = now + to_timedelta(time)
-#                 else:
-#                     reminder['done'] = True
-#
-#                 await db.all_reminders.replace_one({'_id': reminder['_id']}, reminder)
-#
-
 
 async def has_perms(ctx):  # Check that a user has one of the roles to manage the bot
     for b in ctx.author.roles:
@@ -250,13 +138,13 @@ async def on_ready():
         print(message.content, file=text_file)
     if config("DEBUG") == "False":
         await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot peace be upon him")
-        debug_status = "normal"
+        bot.debug_status = "normal"
     else:
         await discord.utils.get(bot.get_all_members(), id=bot.user.id).edit(nick="prism bot testing be his job")
-        debug_status = "debug"
+        bot.debug_status = "debug"
     print(f"╔═══════════════════════════════════════════════════")
     print(f"╠Bot is ready")
-    print(f"╠{bot.user.name} running in {debug_status} mode")
+    print(f"╠{bot.user.name} running in {bot.debug_status} mode")
     print(f"╠Discord API Version: {discord.__version__}")
     print(f"╠═Guilds:")
     for guild in bot.guilds:  # Print list of current guildsPreparedRequest
@@ -264,6 +152,7 @@ async def on_ready():
     print(f"╚═══════════════════════════════════════════════════")
     prismian.start()
     changelog.start()
+    updating_embed.start()
     global RJD, roles_json
     testing_zone = bot.get_guild(int(config('guild_id')))
     try:
@@ -292,12 +181,77 @@ async def on_ready():
             member[1] -= current_time
 
 
+@bot.command
+async def dm(ctx):
+    for member in ctx.guild.members:
+        await member.send("Hey there! This is just a reminder to vote in the current Prismian Presidential Election if you haven't already! You can do so in the election-votes.")
+        print(f"Sent a DM to {member.display_name}")
+
+
 @tasks.loop(minutes=2)
 async def changelog():
     channel = bot.get_channel(897765157940396052)
     message = await channel.fetch_message(920460790354567258)
     with open("old.txt", "w", encoding="utf8") as text_file:
         print(message.content, file=text_file)
+
+
+@tasks.loop(seconds=10)
+async def updating_embed():
+    channel = bot.get_channel(861289278374150164)
+    message = await channel.fetch_message(932900240019828756)
+    user = bot.get_user(324504908013240330)
+    IP = config("GAME_IP")
+    url = f"http://{IP}/players/{user.display_name}/stats"
+    # print(f"http://{IP}/players/{user.display_name}/stats")
+    page = requests.get(url)
+    stats = json.loads(page.text)
+    try:
+        if stats['error']:
+            embed = discord.Embed(color=discord.colour.Color.red(),
+                                  title=f"No one is currently in game",
+                                  description=f"Last updated at {datetime.now()}")
+            await message.edit(embed=embed)
+            return
+    except:
+        # Game time
+        sec = int(stats["time"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            game_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            game_time = f"{min_value} minutes"
+        # Death time
+        sec = int(stats["death"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        time = stats['lastJoined']
+        time = int(str(time)[:-3])
+        if hour_value != 0:
+            death_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            death_time = f"{min_value} minutes"
+        embed = discord.Embed(color=discord.colour.Color.red(),
+                              title=f"{user.display_name}'s current game stats")
+        embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Last quit:", value=f"<t:{time}:R>", inline=True)
+        embed.add_field(name="Kills:", value=stats["kills"], inline=True)
+        embed.add_field(name="Deaths:", value=stats["deaths"], inline=True)
+        embed.add_field(name="XP level:", value=stats["level"], inline=True)
+        embed.add_field(name="Health:", value=stats["health"], inline=True)
+        embed.add_field(name="Hunger:", value=stats["food"], inline=True)
+        embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
+        embed.add_field(name="World:", value=stats["world"], inline=True)
+        embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay#{random.randint(1, 2000)}")
+        await message.edit(embed=embed)
 
 
 @bot.event
@@ -663,27 +617,26 @@ async def on_message(message):
         except:
             print("Not doing anything")
 
-    # blacklist_channels = [907718985343197194]  # Don't listen to the message logger channel to avoid looping
-    # if len(message.content) > 1500:
-    #     if not message.channel.id in blacklist_channels:
-    #         step = 1000
-    #         for i in range(0, len(message.content), 1000):
-    #             slice = message.content[i:step]
-    #             step += 1000
-    #             async with aiohttp.ClientSession() as session:
-    #                 webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
-    #                 await webhook.send(
-    #                     f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {slice}",
-    #                     username=message.author.display_name, avatar_url=message.author.avatar_url)
-    #
-    # if message.channel.id in blacklist_channels:
-    #     return
-    # else:  # Otherwise do the logging thing
-    #     async with aiohttp.ClientSession() as session:
-    #         webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
-    #         await webhook.send(
-    #             f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {message.content}",
-    #             username=message.author.display_name, avatar_url=message.author.avatar_url)
+    blacklist_channels = [907718985343197194, 891614699374915584, 891614663253585960]  # Don't listen to the message logger channel to avoid looping
+    if len(message.content) > 1500 and not message.channel.id in blacklist_channels:
+        step = 1000
+        for i in range(0, len(message.content), 1000):
+            split = message.content[i:step]
+            step += 1000
+            async with aiohttp.ClientSession() as session:
+                webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
+                await webhook.send(
+                    f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {split}",
+                    username=message.author.display_name, avatar_url=message.author.avatar_url)
+
+    if message.channel.id in blacklist_channels:
+        return
+    else:  # Otherwise, do the logging thing
+        async with aiohttp.ClientSession() as session:
+            webhook = Webhook.from_url(config("LOG"), adapter=AsyncWebhookAdapter(session))
+            await webhook.send(
+                f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {message.content}",
+                username=message.author.display_name, avatar_url=message.author.avatar_url)
 
     if message.author == bot.user:  # Don't listen to yourself
         return
@@ -730,7 +683,7 @@ async def on_message(message):
 async def list(ctx: SlashContext, role: discord.Role):
     usernames = [m.display_name for m in role.members]
     count = 0
-    for i in role.members:
+    for m in role.members:
         count += 1
     check_len = str(sorted(usernames,
                     key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
@@ -1855,7 +1808,7 @@ async def whois(ctx: Context, *, user: discord.Member = None):
             death_time = f"{hour_value} hours, {min_value} minutes"
         else:
             death_time = f"{min_value} minutes"
-        embed = discord.Embed(color=discord.colour.Color.red(),
+        embed = discord.Embed(color=top_role.color,
                               title=f"{user.display_name}'s current game stats")
         embed.add_field(name="Time spent in game:", value=game_time, inline=True)
         embed.add_field(name="Time since last death:", value=death_time, inline=True)
@@ -1868,6 +1821,7 @@ async def whois(ctx: Context, *, user: discord.Member = None):
         embed.add_field(name="World:", value=stats["world"], inline=True)
         embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay")
         await ctx.send(embed=embed)
+
 
 @bot.command()
 async def game(ctx, user: discord.Member = None):
@@ -2101,24 +2055,56 @@ async def auth(ctx, message):
         await ctx.send("Something funky is going on")
 
 
-@tasks.loop(hours=12)
+@tasks.loop(hours=1)
 async def prismian():
     logger.info("Checking for Prismian upgrades")
     guild = bot.get_guild(858547359804555264)
-    for member in bot.get_guild(858547359804555264).members:
-        prismian_role = discord.utils.get(guild.roles, name='Prismian')
-        new_role = discord.utils.get(guild.roles, name='New Member')
-        if prismian_role not in member.roles and new_role in member.roles:
-            duration = datetime.now() - member.joined_at
-            hours, remainder = divmod(int(duration .total_seconds()), 3600)
-            days, hours = divmod(hours, 24)
-            if days >= 14:
-                mod_log = bot.get_channel(897765157940396052)
-                await mod_log.send(f"{member.display_name} has been a new member for {days} days and upgraded to Prismian today!")
-                await member.remove_roles(new_role)
-                await member.add_roles(prismian_role)
-                logger.info(f"{member.display_name} has been upgraded to Prismian")
+    general = bot.get_channel(858547359804555267)
+    mod_log = bot.get_channel(897765157940396052)
+    whitelisted = discord.utils.get(guild.roles, name='Whitelisted')
+    members_no_lookup = []
+    members_losing = []
+    for member in guild.members:
+        if not member.bot:
+            if whitelisted in member.roles:
+                IP = config("GAME_IP")
+                url = f"http://{IP}/discord/{member.id}"
+                try:
+                    page = requests.get(url)
+                    stats = json.loads(page.text)
+                    time = stats['lastJoined']
+                    time = int(str(time)[:-3])
+                    duration = datetime.now() - datetime.fromtimestamp(time)
+                    hours, remainder = divmod(int(duration.total_seconds()), 3600)
+                    days, hours = divmod(hours, 24)
+                    if days >= 30:
+                        await member.remove_roles(whitelisted)
+                        members_losing.append(member.display_name)
 
+                except:
+                    members_no_lookup.append(member.display_name)
+
+                prismian_role = discord.utils.get(guild.roles, name='Prismian')
+                new_role = discord.utils.get(guild.roles, name='New Member')
+                if prismian_role not in member.roles and new_role in member.roles:
+                    duration = datetime.now() - member.joined_at
+                    hours, remainder = divmod(int(duration .total_seconds()), 3600)
+                    days, hours = divmod(hours, 24)
+                    if days >= 14:
+                        await mod_log.send(f"{member.display_name} has been a new member for {days}"
+                                           f" days and upgraded to Prismian today!")
+                        await general.send("https://cdn.discordapp.com/attachments/861289278374150164/934758089075355708/party-popper-joypixels.gif")
+                        await general.send(f"{member.mention} congrats on upgrading from New Member to Prismian today!")
+                        await member.remove_roles(new_role)
+                        await member.add_roles(prismian_role)
+                        logger.info(f"{member.display_name} has been upgraded to Prismian")
+
+    members_no_lookup = str(members_no_lookup).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
+    members_losing = str(members_losing).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
+    if len(members_no_lookup) > 0:
+        await mod_log.send(f"Couldn't look up last played status for\n```{members_no_lookup}\n```")
+    if len(members_losing) > 0:
+        await mod_log.send(f"```\n{members_losing}\n```just lost their whitelisted role")
 
 @slash.slash(name="arrest",
              guild_ids=bot.guild_ids,

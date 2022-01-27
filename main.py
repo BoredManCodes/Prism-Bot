@@ -20,7 +20,7 @@ from discord.ext.commands import CommandNotFound, is_owner, check, Context, has_
 from discord.ext import commands, tasks
 from discord_slash import SlashCommand, SlashContext, ComponentContext, MenuContext
 from discord_slash.utils.manage_commands import create_option
-from discord_slash.utils.manage_components import create_button, create_actionrow,\
+from discord_slash.utils.manage_components import create_button, create_actionrow, \
     create_select_option, create_select, wait_for_component
 from discord_slash.model import ButtonStyle, ContextMenuType
 from slash_help import SlashHelp
@@ -31,10 +31,19 @@ import time
 from datetime import datetime
 import logging
 import random
+import sentry_sdk
+if config("DEBUG"):
+    environment = "development"
+else:
+    environment = "production"
+sentry_sdk.init(
+    config('SENTRY'),
+    environment=environment,
+    traces_sample_rate=1.0)
+
 
 # Setup the logger
 class CustomFormatter(logging.Formatter):
-
     grey = "\x1b[38;21m"
     yellow = "\x1b[33;21m"
     red = "\x1b[31;21m"
@@ -63,7 +72,6 @@ ch.setLevel(logging.DEBUG)
 ch.setFormatter(CustomFormatter())
 logger.addHandler(ch)
 
-
 # Setup the bot
 intents = discord.Intents.default()
 intents.members = True
@@ -85,8 +93,7 @@ help_slash = SlashHelp(bot,
                        extended_buttons=True,
                        prefix='$'
                        )
-
-
+bot.completion_date = "soon"
 # Much easier than remembering numbers
 option_type = {
     "sub_command": 1,
@@ -111,7 +118,7 @@ async def has_perms(ctx):  # Check that a user has one of the roles to manage th
         if b.id in RJD["perms"]:
             return True
 
-# Slash commands don't have a message object
+    # Slash commands don't have a message object
     try:
         name = ctx.message.author.display_name
     except:
@@ -126,6 +133,7 @@ async def has_perms(ctx):  # Check that a user has one of the roles to manage th
     embed.set_footer(text=f"Caused by {name}", icon_url=icon)
     await ctx.send(embed=embed)
     return False
+
 
 bot.guild_ids = [858547359804555264]  # Bypass stupid hour+ waiting time for global commands
 
@@ -168,7 +176,7 @@ async def on_ready():
             if member[1] <= time.time():
                 try:
                     await testing_zone.get_member(member[0]).remove_roles(testing_zone.get_role(int(role[0])),
-                                                                         reason="expired")
+                                                                          reason="expired")
                 except:
                     pass
                 RJD[role[0]].remove(member)
@@ -184,8 +192,109 @@ async def on_ready():
 @bot.command
 async def dm(ctx):
     for member in ctx.guild.members:
-        await member.send("Hey there! This is just a reminder to vote in the current Prismian Presidential Election if you haven't already! You can do so in the election-votes.")
+        await member.send(
+            "Hey there! This is just a reminder to vote in the current Prismian Presidential Election if you haven't already! You can do so in the election-votes.")
         print(f"Sent a DM to {member.display_name}")
+
+
+@tasks.loop(hours=2)
+async def prismian():
+    logger.info("Checking for Prismian upgrades")
+    guild = bot.get_guild(858547359804555264)
+    general = bot.get_channel(858547359804555267)
+    mod_log = bot.get_channel(897765157940396052)
+    prism = bot.get_guild(858547359804555264)
+    founder = discord.utils.get(guild.roles, name="Founder")
+    whitelisted = discord.utils.get(guild.roles, name='Whitelisted')
+    linked = discord.utils.get(guild.roles, name='Linked')
+    prismian_role = discord.utils.get(guild.roles, name='Prismian')
+    new_role = discord.utils.get(guild.roles, name='New Member')
+    members_no_lookup = []
+    members_losing = []
+    members_being_kicked = []
+    members_not_found = []
+    for member in guild.members:
+        if founder in member.roles:
+            return
+        duration = datetime.now() - member.joined_at
+        hours, remainder = divmod(int(duration.total_seconds()), 3600)
+        days, hours = divmod(hours, 24)
+        if not member.bot:
+            if whitelisted in member.roles:
+                IP = config("GAME_IP")
+                url = f"http://{IP}/discord/{member.id}"
+                try:
+                    page = requests.get(url)
+                    stats = json.loads(page.text)
+                    time = stats['lastJoined']
+                    time = int(str(time)[:-3])
+                    duration = datetime.now() - datetime.fromtimestamp(time)
+                    hours, remainder = divmod(int(duration.total_seconds()), 3600)
+                    days, hours = divmod(hours, 24)
+                    if days >= 30:
+                        await member.remove_roles(whitelisted)
+                        members_losing.append(member.display_name)
+
+                except:
+                    members_no_lookup.append(member.display_name)
+            if prismian_role not in member.roles and new_role in member.roles:
+                if days >= 14:
+                    if linked in member.roles:
+                        await mod_log.send(
+                            f"{member.display_name} has been a new member for {days}"
+                            f" days and upgraded to Prismian today!")
+                        await general.send(
+                            "https://cdn.discordapp.com/attachments/861289278374150164/934758089075355708/party-popper-joypixels.gif")
+                        await general.send(
+                            f"{member.mention} congrats on upgrading from New Member to Prismian today!")
+                        await member.remove_roles(new_role)
+                        await member.add_roles(prismian_role)
+                        logger.info(f"{member.display_name} has been upgraded to Prismian")
+                    if linked not in member.roles:
+                        await member.send("Hello.\nI'm Prism Bot, I've detected you haven't joined the server during your trial period.\n"
+                                          "I believe you have no intention to play. If I am wrong please re-join the interview server and "
+                                          "inform a staff member of your intentions\nDo not reply to this message\n"
+                                          "https://discord.gg/XecRVnpb4J")
+                        await mod_log.send(
+                            f"{member.mention} needs to be kicked due to not joining the server during their trial period")
+        try:
+            oldestMessage = None
+            for channel in prism.text_channels:
+                fetchMessage = await channel.history().find(lambda m: m.author.id == member.id)
+                if fetchMessage is None:
+                    continue
+
+                if oldestMessage is None:
+                    oldestMessage = fetchMessage
+                else:
+                    if fetchMessage.created_at > oldestMessage.created_at:
+                        oldestMessage = fetchMessage
+
+            if (oldestMessage is not None):
+                minecraft_join_last = days
+                duration = datetime.now() - oldestMessage.created_at
+                hours, remainder = divmod(int(duration.total_seconds()), 3600)
+                days, hours = divmod(hours, 24)
+                if days and minecraft_join_last >= 60:
+                    members_being_kicked.append(f"Oldest message from {member.mention} is"
+                                       f" {days} days ago, They last joined {minecraft_join_last} days ago (Verification: <t:{time}:R>)")
+            else:
+                members_not_found.append(member.display_name)
+        except:
+            print("error")
+    members_no_lookup = str(members_no_lookup).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
+    members_losing = str(members_losing).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
+    members_being_kicked = str(members_being_kicked).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
+    members_not_found = str(members_not_found).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
+    if len(members_no_lookup) > 0:
+        await mod_log.send(f"Couldn't look up last played status for\n```{members_no_lookup}\n```")
+    if len(members_losing) > 0:
+        await mod_log.send(f"```\n{members_losing}\n```just lost their whitelisted role")
+    if len(members_being_kicked) > 0:
+        await mod_log.send(f"The following members potentially need to be kicked due to inactivity\n{members_being_kicked}\n")
+    if len(members_not_found) > 0:
+        await mod_log.send(f"No message found for these members. Please lookup manually\n{members_not_found}")
+    logger.info("Done checking for Prismian upgrades")
 
 
 @tasks.loop(minutes=2)
@@ -250,7 +359,8 @@ async def updating_embed():
         embed.add_field(name="Hunger:", value=stats["food"], inline=True)
         embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
         embed.add_field(name="World:", value=stats["world"], inline=True)
-        embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay#{random.randint(1, 2000)}")
+        embed.set_thumbnail(
+            url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay#{random.randint(1, 2000)}")
         await message.edit(embed=embed)
 
 
@@ -261,7 +371,8 @@ async def on_component(ctx: ComponentContext):
             roles = discord.utils.get(ctx.guild.roles, id=int(role))
             await ctx.author.add_roles(roles)
         # This definitely looks like shit, but it works really goodly
-        rolestr = str(ctx.selected_options).replace(" '", "<@&").replace("',", "> ").replace("']", "> ").replace("['", "<@&")
+        rolestr = str(ctx.selected_options).replace(" '", "<@&").replace("',", "> ").replace("']", "> ").replace("['",
+                                                                                                                 "<@&")
         await ctx.edit_origin(content=f"Added you to {rolestr}", hidden=True, components=None)
     if ctx.custom_id == "take-me-roles":
         for role in ctx.selected_options:
@@ -283,6 +394,28 @@ async def on_member_update(before, after):
         embed.set_thumbnail(url=after.avatar_url)
         channel = bot.get_channel(897765157940396052)
         await channel.send(embed=embed)
+
+
+@bot.command()
+@is_owner()
+async def msg(ctx, *, member=None):
+    if member is None:
+        await ctx.send("No members to message")
+        return
+    member = member.replace('<', '').replace('@', '').replace('>', '').replace('!', '')
+    members = member.split(' ')
+    mod_log = bot.get_channel(897765157940396052)
+    members_messaged = []
+    for i in members:
+        member = await ctx.guild.fetch_member(i)
+        await member.send("Hi there,\n"
+                          "I have noticed you haven't joined the Minecraft server in over two months "
+                          "and haven't sent any messages in that time period in our Discord.\n"
+                          "If you don't indicate your intention to stay a member of Prism SMP "
+                          "within 2 weeks you will be automatically removed to make way for new members")
+        members_messaged.append(member.display_name)
+    members_messaged = str(members_messaged).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
+    await mod_log.send(f"The following members have been messaged about their inactivity\n{members_messaged}")
 
 
 @bot.command(description="Allows Bored to evaluate code", category="Owner Only")
@@ -363,14 +496,16 @@ async def ip(ctx: SlashContext, address=None):
                               color=discord.Color.green())
         embed.set_footer(text=f"Requested by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
         try:
-            embed.add_field(name="Location", value=f"{result['city']}\n{result['region']}, {result['country']}", inline=True)
+            embed.add_field(name="Location", value=f"{result['city']}\n{result['region']}, {result['country']}",
+                            inline=True)
         except:
             print(probe)
         if not result['hostname'] == '':
             embed.add_field(name="Hostname", value=str(result['hostname']), inline=True)
         if not result['host-domain'] == '':
             embed.add_field(name="Host Domain", value=str(result['host-domain']), inline=True)
-        embed.add_field(name="Maps Link", value=f"https://maps.google.com/?q={result['latitude']},{result['longitude']}", inline=True)
+        embed.add_field(name="Maps Link",
+                        value=f"https://maps.google.com/?q={result['latitude']},{result['longitude']}", inline=True)
         embed.add_field(name="Provider", value=f"{probe['provider-description']}", inline=True)
         if probe['is-vpn']:
             embed.add_field(name="Is VPN?", value=f"Yes {probe['vpn-domain']}", inline=True)
@@ -402,7 +537,8 @@ async def ip(ctx, address=None):
         return
 
     try:
-        ipaddress.ip_address(address)  # This will return an error if it's not a valid IP. Saves me doing input validation
+        ipaddress.ip_address(
+            address)  # This will return an error if it's not a valid IP. Saves me doing input validation
         message = await ctx.reply("https://cdn.discordapp.com/emojis/783447587940073522.gif")
         # os.system(f"ping -c 1  {address}")
         try:
@@ -477,29 +613,29 @@ async def ip(ctx, address=None):
 @slash.slash(name="gimme-roles",
              guild_ids=bot.guild_ids,
              description="Give yourself some roles",
-)
+             )
 async def roles(ctx: SlashContext):
     select = create_select(
-    options=[
-    create_select_option("Random Gang", value="893284269798068305"),
-    create_select_option("Other pronouns/ask me", value="866455940958126091"),
-    create_select_option("One/ones", value="866460688583229492"),
-    create_select_option("He/Him", value="866455665357881364"),
-    create_select_option("She/Her", value="866455537234477095"),
-    create_select_option("They/Them", value="866455786988765194"),
-    create_select_option("It/its", value="866460549680332810"),
-    create_select_option("Among us gang", value="891046340996530256"),
-    create_select_option("Jackbox gang", value="863916385268400158"),
-    create_select_option("There be dungeons and dragons", value="861365982803132456"),
-    create_select_option("Movie gang", value="860624643449946153"),
-    create_select_option("Announcement gang", value="866471817450356737"),
-    create_select_option("Shush the bot pings", value="920459523947364373")
+        options=[
+            create_select_option("Random Gang", value="893284269798068305"),
+            create_select_option("Other pronouns/ask me", value="866455940958126091"),
+            create_select_option("One/ones", value="866460688583229492"),
+            create_select_option("He/Him", value="866455665357881364"),
+            create_select_option("She/Her", value="866455537234477095"),
+            create_select_option("They/Them", value="866455786988765194"),
+            create_select_option("It/its", value="866460549680332810"),
+            create_select_option("Among us gang", value="891046340996530256"),
+            create_select_option("Jackbox gang", value="863916385268400158"),
+            create_select_option("There be dungeons and dragons", value="861365982803132456"),
+            create_select_option("Movie gang", value="860624643449946153"),
+            create_select_option("Announcement gang", value="866471817450356737"),
+            create_select_option("Shush the bot pings", value="920459523947364373")
 
-    ],
-    custom_id="gimme-roles",
-    placeholder="Choose your roles",
-    min_values=1,
-    max_values=13
+        ],
+        custom_id="gimme-roles",
+        placeholder="Choose your roles",
+        min_values=1,
+        max_values=13
     )
     await ctx.send("Role selection", components=[create_actionrow(select)], hidden=True)
 
@@ -507,29 +643,29 @@ async def roles(ctx: SlashContext):
 @slash.slash(name="take-me-roles",
              guild_ids=bot.guild_ids,
              description="Remove roles from yourself",
-)
+             )
 async def roles(ctx: SlashContext):
     select = create_select(
-    options=[
-    create_select_option("Random Gang", value="893284269798068305"),
-    create_select_option("Other pronouns/ask me", value="866455940958126091"),
-    create_select_option("One/ones", value="866460688583229492"),
-    create_select_option("He/Him", value="866455665357881364"),
-    create_select_option("She/Her", value="866455537234477095"),
-    create_select_option("They/Them", value="866455786988765194"),
-    create_select_option("It/its", value="866460549680332810"),
-    create_select_option("Among us gang", value="891046340996530256"),
-    create_select_option("Jackbox gang", value="863916385268400158"),
-    create_select_option("There be dungeons and dragons", value="861365982803132456"),
-    create_select_option("Movie gang", value="860624643449946153"),
-    create_select_option("Announcement gang", value="866471817450356737"),
-    create_select_option("Shush the bot pings", value="920459523947364373")
+        options=[
+            create_select_option("Random Gang", value="893284269798068305"),
+            create_select_option("Other pronouns/ask me", value="866455940958126091"),
+            create_select_option("One/ones", value="866460688583229492"),
+            create_select_option("He/Him", value="866455665357881364"),
+            create_select_option("She/Her", value="866455537234477095"),
+            create_select_option("They/Them", value="866455786988765194"),
+            create_select_option("It/its", value="866460549680332810"),
+            create_select_option("Among us gang", value="891046340996530256"),
+            create_select_option("Jackbox gang", value="863916385268400158"),
+            create_select_option("There be dungeons and dragons", value="861365982803132456"),
+            create_select_option("Movie gang", value="860624643449946153"),
+            create_select_option("Announcement gang", value="866471817450356737"),
+            create_select_option("Shush the bot pings", value="920459523947364373")
 
-    ],
-    custom_id="take-me-roles",
-    placeholder="Choose the roles you no longer want",
-    min_values=1,
-    max_values=13
+        ],
+        custom_id="take-me-roles",
+        placeholder="Choose the roles you no longer want",
+        min_values=1,
+        max_values=13
     )
     await ctx.send("Role selection", components=[create_actionrow(select)], hidden=True)
 
@@ -564,39 +700,39 @@ async def banner(ctx, member: discord.Member = None):
     if not str(banner_id) == "None":
         banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
         req.prepare_url(
-        url='https://api.xzusfin.repl.co/card?',
-        params={
-            'avatar': str(member.avatar_url_as(format='png')),
-            'middle': ' ',
-            'name': str(member.name),
-            'bottom': ' ',
-            'text': member.color,
-            'avatarborder': member.color,
-            'avatarbackground': member.color,
-            'background': banner_url
-        }
+            url='https://api.xzusfin.repl.co/card?',
+            params={
+                'avatar': str(member.avatar_url_as(format='png')),
+                'middle': ' ',
+                'name': str(member.name),
+                'bottom': ' ',
+                'text': member.color,
+                'avatarborder': member.color,
+                'avatarbackground': member.color,
+                'background': banner_url
+            }
         )
         await ctx.send(req.url)
     else:
         req.prepare_url(
-        url='https://api.xzusfin.repl.co/card?',
-        params={
-            'avatar': str(member.avatar_url_as(format='png')),
-            'middle': ' ',
-            'name': str(member.name),
-            'bottom': ' ',
-            'text': '#CCCCCC',
-            'avatarborder': '#CCCCCC',
-            'avatarbackground': '#CCCCCC',
-            'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"
-        }
+            url='https://api.xzusfin.repl.co/card?',
+            params={
+                'avatar': str(member.avatar_url_as(format='png')),
+                'middle': ' ',
+                'name': str(member.name),
+                'bottom': ' ',
+                'text': '#CCCCCC',
+                'avatarborder': '#CCCCCC',
+                'avatarbackground': '#CCCCCC',
+                'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"
+            }
         )
         await ctx.send(req.url)
 
 
 @bot.event
 async def on_message(message):
-    if "discord.com/channels" in message.content:
+    if ".com/channels" in message.content:
         try:
             await message.delete()
             link = message.content.split('/')
@@ -617,7 +753,8 @@ async def on_message(message):
         except:
             print("Not doing anything")
 
-    blacklist_channels = [907718985343197194, 891614699374915584, 891614663253585960]  # Don't listen to the message logger channel to avoid looping
+    blacklist_channels = [907718985343197194, 891614699374915584,
+                          891614663253585960]  # Don't listen to the message logger channel to avoid looping
     if len(message.content) > 1500 and not message.channel.id in blacklist_channels:
         step = 1000
         for i in range(0, len(message.content), 1000):
@@ -663,7 +800,8 @@ async def on_message(message):
                 f"{result['censored-content']}",
                 username=f"{message.author.display_name} in DM", avatar_url=message.author.avatar_url)
     if str(bot.user.id) in message.content:
-        reactions = ["<:iseeyou:876201272972304425>", "🇨", "🇦", "🇳", "▪️", "🇮", "◼️", "🇭", "🇪", "🇱", "🇵", "⬛", "🇾", "🇴", "🇺", "❓"]
+        reactions = ["<:iseeyou:876201272972304425>", "🇨", "🇦", "🇳", "▪️", "🇮", "◼️", "🇭", "🇪", "🇱", "🇵", "⬛",
+                     "🇾", "🇴", "🇺", "❓"]
         for reaction in reactions:
             await message.add_reaction(reaction)
     await bot.process_commands(message)  # Continue processing bot.commands
@@ -686,7 +824,7 @@ async def list(ctx: SlashContext, role: discord.Role):
     for m in role.members:
         count += 1
     check_len = str(sorted(usernames,
-                    key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
+                           key=str.lower)).replace(',', '\n').replace('[', '').replace(']', '').replace('\'', '')
     if len(check_len) > 2000:  # Ensure we don't go over the Discord embed limit
         title = f"**{count} members with the {role.name} role**"
         description = str(sorted(usernames,
@@ -760,7 +898,7 @@ async def clear(ctx: SlashContext, limit: int = None):
 
 @bot.command(pass_context=True)
 @check(has_perms)
-async def purge(ctx, limit: int=None):
+async def purge(ctx, limit: int = None):
     if limit is None:
         await ctx.send("You didn't tell me how many messages to purge", delete_after=20)
         return
@@ -788,53 +926,54 @@ async def welcomemsg(ctx):
     title = "Welcome to Prism SMP!"
     description = """__General information__
                     "If you need anything or have a question of any sort, contact a <@&858547638719086613>. Your issue will then go as far as necessary up the ladder.
-                    
+
                     You can grab some self roles over in <#861288424640348160>.
-                    
+
                     The IP is in <#858549386962272296>: you don't have to read the entirety of that as it is a tad outdated and due a complete rewrite... it still can give you a rough idea of where we are coming from and can give you an idea of your rights as a Prismian.
-                    
+
                     Ask in <#869280855657447445> to get yourself whitelisted.
-                    
+
                     Have fun!
-                    
+
                     __Rules__
                     ```Note: 
                     Use common sense and don't be a douche. There is more to "rules" than those written here. This is not meant as an exhaustive list. Listen to the staff```
-                    
+
                     **1) Social**
                     1.1 Follow the [Discord ToS](https://discord.com/terms).
-                    
+
                     1.2 No hate speech or harassment.
-                    
+
                     1.3 Keep the server PG-13. Keep in mind some of our members might be younger than you. Set an example.
-                    
+
                     1.4 Unwanted PvP (don't go around murdering people), stealing and griefing are severely punished.
-                    
+
                     1.5 Don't spam in the discord or on the server.
-                    
+
                     1.6 Respect player's claims and boundaries. Do not use farms without explicit permission. It is generally accepted to harvest crops for food and replant it unless the owner decides otherwise. If a sign says "keep out", keep out.
-                    
+
                     **2) Technical**
                     2.1 Any unofficial application/mod/client giving you an advantage over other players are considered cheating and are strictly prohibited. In case of doubt, contact the staff.
-                    
+
                     **3) Building**
                     3.1 Ask for permission from the players you want to settle nearby. 
-                    
+
                     3.2 No building at less than 500 blocks from spawn (~x280 z230). The area around spawn is dedicated to community builds such as the Shopping District and the Mini-games District. Anything built there prior to this rule is safe to stay as long as their owners are Prism members.
-                    
+
                     3.3 For Shopping District rules, see the pinned message in 🎙︱survival-adverts 
-                    
+
                     3.4 Mega-projects are to be validated by staff: if you plan a build spanning more than 50 chunks please contact staff for approval prior to start building.
-                    
+
                     3.5 Spawnproof anything you build on the Nether Roof.
-                    
+
                     3.6 Consider lag when building farms. Examples: 
                     3.6.1 Put your villagers in minecart or on double carpets to disable their pathfinding AI
-                    
+
                     3.6.2 Put composters on top of your unlocked hoppers to disable their "sucking" action and reduce their impact on the server. """
 
     embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
-    embed.set_thumbnail(url="https://cdn.discordapp.com/avatars/890176674237399040/5716879890391b6204a71b05a77b2258.webp?size=1024")
+    embed.set_thumbnail(
+        url="https://cdn.discordapp.com/avatars/890176674237399040/5716879890391b6204a71b05a77b2258.webp?size=1024")
     await ctx.send(embed=embed)
 
 
@@ -842,7 +981,8 @@ async def welcomemsg(ctx):
 async def on_command_error(ctx, error):
     if isinstance(error, CommandNotFound):
         return
-    embed = discord.Embed(title=f"**Error in command: {ctx.command}**", description=f"```\n{error}\n```", colour=discord.Color.red())
+    embed = discord.Embed(title=f"**Error in command: {ctx.command}**", description=f"```\n{error}\n```",
+                          colour=discord.Color.red())
     await ctx.send(embed=embed)
     raise error
 
@@ -859,7 +999,8 @@ async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
         new = open("new.txt").readlines()
         differ = difflib.Differ()
         differ_output = differ.compare(old, new)
-        changes = '{0}'.format(''.join(differ_output)).replace('<a:tick:757490995720880159>', '✅').replace('<@!890176674237399040>', 'Prism Bot')
+        changes = '{0}'.format(''.join(differ_output)).replace('<a:tick:757490995720880159>', '✅').replace(
+            '<@!890176674237399040>', 'Prism Bot')
         embed = discord.Embed(title="Changelog changed",
                               url=message.jump_url,
                               description=f"```diff\n{changes}\n```",
@@ -890,7 +1031,8 @@ async def on_member_join(member):
                 mod_log = bot.get_channel(897765157940396052)
                 title = f"{member.display_name} joined the server"
                 embed = discord.Embed(title=title, color=discord.Color.green())
-                embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}", icon_url=member.avatar_url)
+                embed.set_footer(text=f"Discord name: {member.name}\nDiscord ID: {member.id}",
+                                 icon_url=member.avatar_url)
                 date_format = "%a, %d %b %Y %I:%M %p"
                 embed.add_field(name="Joined Discord", value=member.created_at.strftime(date_format), inline=False)
                 await mod_log.send(embed=embed)
@@ -988,12 +1130,8 @@ async def on_member_remove(member):
                 f"{member.name} found love elsewhere :(",
                 f"{member.name} left\nSee you later alligator",
                 f"{member.name} left\nBye Felicia",
-                f"Some cause happiness wherever they go; {member.name} causes it whenever they go",
-                f"{member.name} left\nSo long, and thanks for all the fish!",
-                f"{member.name} left\nWe are really going to miss trying to avoid you around here",
+               f"{member.name} left\nSo long, and thanks for all the fish!",
                 f"{member.name} left\nGoodbye, Vietnam! That’s right, I’m history, I’m outta here, "
-                f"I got the lucky ticket home, baby",
-                f"Welp, I guess {member.name} died. That's the only reason I can imagine anyone would leave us"
             ]
             general = bot.get_channel(858547359804555267)
             await general.send(random.choice(messages))
@@ -1076,10 +1214,10 @@ async def whitelist(ctx: SlashContext, member: discord.Member):
     embed.set_footer(text=f"Whitelisted by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     embed.set_author(name="📋 User added to whitelist")
     await channel.send(embed=embed)
-    await ctx.send(embed=embed, hidden=True)
 
 
-@bot.command(name='whitelist', pass_context=True, description="Adds a user to the whitelisted role", category="Moderation")
+@bot.command(name='whitelist', pass_context=True, description="Adds a user to the whitelisted role",
+             category="Moderation")
 @check(has_perms)
 async def whitelist(ctx, member: discord.Member):
     await ctx.message.delete()
@@ -2054,57 +2192,6 @@ async def auth(ctx, message):
     else:
         await ctx.send("Something funky is going on")
 
-
-@tasks.loop(hours=1)
-async def prismian():
-    logger.info("Checking for Prismian upgrades")
-    guild = bot.get_guild(858547359804555264)
-    general = bot.get_channel(858547359804555267)
-    mod_log = bot.get_channel(897765157940396052)
-    whitelisted = discord.utils.get(guild.roles, name='Whitelisted')
-    members_no_lookup = []
-    members_losing = []
-    for member in guild.members:
-        if not member.bot:
-            if whitelisted in member.roles:
-                IP = config("GAME_IP")
-                url = f"http://{IP}/discord/{member.id}"
-                try:
-                    page = requests.get(url)
-                    stats = json.loads(page.text)
-                    time = stats['lastJoined']
-                    time = int(str(time)[:-3])
-                    duration = datetime.now() - datetime.fromtimestamp(time)
-                    hours, remainder = divmod(int(duration.total_seconds()), 3600)
-                    days, hours = divmod(hours, 24)
-                    if days >= 30:
-                        await member.remove_roles(whitelisted)
-                        members_losing.append(member.display_name)
-
-                except:
-                    members_no_lookup.append(member.display_name)
-
-                prismian_role = discord.utils.get(guild.roles, name='Prismian')
-                new_role = discord.utils.get(guild.roles, name='New Member')
-                if prismian_role not in member.roles and new_role in member.roles:
-                    duration = datetime.now() - member.joined_at
-                    hours, remainder = divmod(int(duration .total_seconds()), 3600)
-                    days, hours = divmod(hours, 24)
-                    if days >= 14:
-                        await mod_log.send(f"{member.display_name} has been a new member for {days}"
-                                           f" days and upgraded to Prismian today!")
-                        await general.send("https://cdn.discordapp.com/attachments/861289278374150164/934758089075355708/party-popper-joypixels.gif")
-                        await general.send(f"{member.mention} congrats on upgrading from New Member to Prismian today!")
-                        await member.remove_roles(new_role)
-                        await member.add_roles(prismian_role)
-                        logger.info(f"{member.display_name} has been upgraded to Prismian")
-
-    members_no_lookup = str(members_no_lookup).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
-    members_losing = str(members_losing).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
-    if len(members_no_lookup) > 0:
-        await mod_log.send(f"Couldn't look up last played status for\n```{members_no_lookup}\n```")
-    if len(members_losing) > 0:
-        await mod_log.send(f"```\n{members_losing}\n```just lost their whitelisted role")
 
 @slash.slash(name="arrest",
              guild_ids=bot.guild_ids,

@@ -6,9 +6,10 @@ import os
 import subprocess
 import sys
 import difflib
+from base64 import urlsafe_b64encode
+from uuid import uuid4 as uuid
 from urllib import parse, request
 from urllib.parse import parse_qsl
-
 from PIL import Image
 from requests import PreparedRequest
 from decouple import config
@@ -669,6 +670,223 @@ async def roles(ctx: SlashContext):
     )
     await ctx.send("Role selection", components=[create_actionrow(select)], hidden=True)
 
+@bot.command()
+async def transcript(ctx):
+
+    css = '''
+        body {
+        background-color: #36393e;
+        color: #dcddde;
+        }
+        a {
+            color: #0096cf;
+        }
+        .info {
+            display: flex;
+            max-width: 100%;
+            margin: 0 5px 10px;
+        }
+        .guild-icon-container {
+            flex: 0;
+        }
+        .guild-icon {
+            max-width: 88px;
+            max-height: 88px;
+        }
+        .metadata {
+            flex: 1;
+            margin-left: 10px;
+        }
+        .guild-name {
+            font-size: 1.4em;
+        }
+        .channel-name {
+            font-size: 1.2em;
+        }
+        .channel-topic {
+            margin-top: 2px;
+        }
+        .channel-message-count {
+            margin-top: 2px;
+        }
+        .chatlog {
+            max-width: 100%;
+            margin-bottom: 24px;
+        }
+        .message-group {
+            display: flex;
+            margin: 0 10px;
+            padding: 15px 0;
+            border-top: 1px solid;
+        }
+        .author-avatar-container {
+            flex: 0;
+            width: 40px;
+            height: 40px;
+        }
+        .author-avatar {
+            border-radius: 50%;
+            height: 40px;
+            width: 40px;
+        }
+        .messages {
+            flex: 1;
+            min-width: 50%;
+            margin-left: 20px;
+        }
+        .author-name {
+            font-size: 1em;
+            font-weight: 500;
+        }
+        .timestamp {
+            margin-left: 5px;
+            font-size: 0.75em;
+        }
+        .message {
+            padding: 2px 5px;
+            margin-right: -5px;
+            margin-left: -5px;
+            background-color: transparent;
+            transition: background-color 1s ease;
+        }
+        .content {
+            font-size: 0.9375em;
+            word-wrap: break-word;
+        }
+        .mention {
+            color: #7289da;
+        }
+    '''
+
+
+    def check_message_mention(msgs: discord.Message):
+        user_mentions: list = msgs.mentions
+        role_mentions: list = msgs.role_mentions
+        channel_mentions: list = msgs.channel_mentions
+        total_mentions: list = user_mentions + role_mentions + channel_mentions
+        m: str = msgs.content
+        for mentions in total_mentions:
+            if mentions in user_mentions:
+                for mention in user_mentions:
+                    m = m.replace(str(f"<@{mention.id}>"),
+                                  f"<span class=\"mention\">@{mention.name}</span>")
+                    m = m.replace(str(f"<@!{mention.id}>"),
+                                  f"<span class=\"mention\">@{mention.name}</span>")
+            elif mentions in role_mentions:
+                for mention in role_mentions:
+                    m = m.replace(str(f"<@&{mention.id}>"),
+                                  f"<span class=\"mention\">@{mention.name}</span>")
+            elif mentions in channel_mentions:
+                for mention in channel_mentions:
+                    m = m.replace(str(f"<#{mention.id}>"),
+                                  f"<span class=\"mention\">#{mention.name}</span>")
+            else:
+                pass
+        return m
+
+
+    messages: discord.TextChannel.history = await ctx.channel.history(limit=None, oldest_first=True).flatten()
+    title = str(f"Transcript of #{ctx.channel.name}")
+    description = str(f"Saved by {ctx.author.display_name}")
+    f = f'''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+            <meta charset=utf-8>
+            <meta name=viewport content="width=device-width">
+            <meta content={title} property="og:title" />
+            <meta content={description} property="og:description"/>
+            <meta content="https://transcripts.boredman.net" property="og:url" />
+            <meta content="https://paste.boredman.net/transcripts.png" property="og:image" />
+            <meta content="#14adc4" data-react-helmet="true" name="theme-color" />
+
+            <style>
+                {css}
+            </style>
+        </head>
+        <body>
+            <div class=info>
+                <div class=guild-icon-container><img class=guild-icon src={ctx.guild.icon_url}></div>
+                <div class=metadata>
+                    <div class=guild-name>{ctx.guild.name}</div>
+                    <div class=channel-name>{ctx.channel.name}</div>
+                    <div class=channel-message-count>{len(messages)} messages</div>
+                </div>
+            </div>
+        '''
+
+    for message in messages:
+        if message.embeds:
+            content = 'Embed'
+
+        elif message.attachments:
+            # IS AN IMAGE:
+            if message.attachments[0].url.endswith(('jpg', 'png', 'gif', 'bmp')):
+                if message.content:
+                    content = check_message_mention(
+                        message) + '<br>' + f"<img src=\"{message.attachments[0].url}\" width=\"200\" alt=\"Attachment\" \\>"
+                else:
+                    content = f"<img src=\"{message.attachments[0].url}\" width=\"200\" alt=\"Attachment\" \\>"
+
+            # IS A VIDEO
+            elif message.attachments[0].url.endswith(('mp4', 'ogg', 'flv', 'mov', 'avi')):
+                if message.content:
+                    content = check_message_mention(message) + '<br>' + f'''
+                    <video width="320" height="240" controls>
+                      <source src="{message.attachments[0].url}" type="video/{message.attachments[0].url[-3:]}">
+                    Your browser does not support the video.
+                    </video>
+                    '''
+                else:
+                    content = f'''
+                    <video width="320" height="240" controls>
+                      <source src="{message.attachments[0].url}" type="video/{message.attachments[0].url[-3:]}">
+                    Your browser does not support the video.
+                    </video>
+                    '''
+            elif message.attachments[0].url.endswith(('mp3', 'boh')):
+                if message.content:
+                    content = check_message_mention(message) + '<br>' + f'''
+                    <audio controls>
+                      <source src="{message.attachments[0].url}" type="audio/{message.attachments[0].url[-3:]}">
+                    Your browser does not support the audio element.
+                    </audio>
+                    '''
+                else:
+                    content = f'''
+                    <audio controls>
+                      <source src="{message.attachments[0].url}" type="audio/{message.attachments[0].url[-3:]}">
+                    Your browser does not support the audio element.
+                    </audio>
+                    '''
+            # OTHER TYPE OF FILES
+            else:
+                # add things
+                pass
+        else:
+            content = check_message_mention(message)
+
+        f += f'''
+        <div class="message-group">
+            <div class="author-avatar-container"><img class=author-avatar src={message.author.avatar_url}></div>
+            <div class="messages">
+                <span class="author-name" >{message.author.name}</span><span class="timestamp">{message.created_at.strftime("%b %d, %Y %H:%M")}</span>
+                <div class="message">
+                    <div class="content"><span class="markdown">{content}</span></div>
+                </div>
+            </div>
+        </div>
+        '''
+    f += '''
+            </div>
+        </body>
+    </html>
+    '''
+
+    with open(f"/root/Inquiry/transcripts/{urlsafe_b64encode(uuid().bytes)[0:22]}.html", mode='w', encoding='utf-8') as file:
+        print(io.StringIO(f).read(), file=file)
+        await ctx.reply(f"Transcript: https://transcripts.boredman.net/{urlsafe_b64encode(uuid().bytes)[0:22]}")
 
 @bot.command(description="Sends some info on what the self roles are", category="Utility")
 async def rolehelp(ctx):
@@ -697,37 +915,64 @@ async def banner(ctx, member: discord.Member = None):
     users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
     banner_id = users["banner"]
     # If statement because the user may not have a banner
+    member_count = len([m for m in member.guild.members if not m.bot])
     if not str(banner_id) == "None":
         banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
         req.prepare_url(
             url='https://api.xzusfin.repl.co/card?',
             params={
                 'avatar': str(member.avatar_url_as(format='png')),
-                'middle': ' ',
-                'name': str(member.name),
-                'bottom': ' ',
-                'text': member.color,
-                'avatarborder': member.color,
-                'avatarbackground': member.color,
+                'middle': f"{member.name} joined Prism",
+                'name': "We now have",
+                'bottom': f'{member_count} members',
+                'text': discord.colour.Color.random(),
+                'avatarborder': discord.colour.Color.random(),
+                'avatarbackground': discord.colour.Color.random(),
                 'background': banner_url
             }
         )
-        await ctx.send(req.url)
+        body = dict(parse_qsl(req.body))
+        if 'code' in body:
+            print("Not sending a banner due to invalid response")
+            print(body)
+            print(req.url)
+        else:
+            img_data = requests.get(req.url).content
+            with open('Banner.png', 'wb') as handler:
+                handler.write(img_data)
+            try:
+                Image.open('Banner.png')
+                await ctx.send(file=discord.File('Banner.png'))
+            except IOError:
+                logger.error("Banner was not a valid image")
     else:
         req.prepare_url(
             url='https://api.xzusfin.repl.co/card?',
             params={
                 'avatar': str(member.avatar_url_as(format='png')),
-                'middle': ' ',
-                'name': str(member.name),
-                'bottom': ' ',
-                'text': '#CCCCCC',
-                'avatarborder': '#CCCCCC',
-                'avatarbackground': '#CCCCCC',
+                'middle': f"{member.name} joined Prism",
+                'name': "We now have",
+                'bottom': f'{member_count} members',
+                'text': discord.colour.Color.random(),
+                'avatarborder': discord.colour.Color.random(),
+                'avatarbackground': discord.colour.Color.random(),
                 'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"
             }
         )
-        await ctx.send(req.url)
+        body = dict(parse_qsl(req.body))
+        if 'code' in body:
+            print("Not sending a banner due to invalid response")
+            print(body)
+            print(req.url)
+        else:
+            img_data = requests.get(req.url).content
+            with open('Banner.png', 'wb') as handler:
+                handler.write(img_data)
+            try:
+                Image.open('Banner.png')
+                await ctx.send(file=discord.File('Banner.png'))
+            except IOError:
+                logger.error("Banner was not a valid image")
 
 
 @bot.event
@@ -752,7 +997,8 @@ async def on_message(message):
             await message.channel.send(embed=embed)
         except:
             print("Not doing anything")
-
+    if "when is the bot going to be finished?" in message.content:
+        await message.channel.send("<t:9999999999:R>")
     blacklist_channels = [907718985343197194, 891614699374915584,
                           891614663253585960]  # Don't listen to the message logger channel to avoid looping
     if len(message.content) > 1500 and not message.channel.id in blacklist_channels:
@@ -902,8 +1148,8 @@ async def purge(ctx, limit: int = None):
     if limit is None:
         await ctx.send("You didn't tell me how many messages to purge", delete_after=20)
         return
-    await ctx.channel.purge(limit=limit)
-    await ctx.send(f'Purged {limit} messages')
+    await ctx.channel.purge(limit=limit + 1)
+    await ctx.send(f'Purged {limit} messages', delete_after=30)
     mod_log = bot.get_channel(897765157940396052)
     title = f"Messages Purged"
     embed = discord.Embed(title=title,
@@ -1053,18 +1299,19 @@ async def on_member_join(member):
             users = await bot.http.request(discord.http.Route("GET", f"/users/{member.id}"))
             banner_id = users["banner"]
             # If statement because the user may not have a banner
+            member_count = len([m for m in member.guild.members if not m.bot])
             if not str(banner_id) == "None":
                 banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
                 req.prepare_url(
                     url='https://api.xzusfin.repl.co/card?',
                     params={
                         'avatar': str(member.avatar_url_as(format='png')),
-                        'middle': 'Everyone welcome',
-                        'name': str(member.name),
-                        'bottom': f'To {member.guild.name}',
-                        'text': member.color,
-                        'avatarborder': member.color,
-                        'avatarbackground': member.color,
+                        'middle': f"{member.name} joined Prism",
+                        'name': "We now have",
+                        'bottom': f'{member_count} members',
+                        'text': discord.colour.Color.random(),
+                        'avatarborder': discord.colour.Color.random(),
+                        'avatarbackground': discord.colour.Color.random(),
                         'background': banner_url
                     }
                 )
@@ -1087,12 +1334,12 @@ async def on_member_join(member):
                     url='https://api.xzusfin.repl.co/card?',
                     params={
                         'avatar': str(member.avatar_url_as(format='png')),
-                        'middle': 'Everybody welcome',
-                        'name': str(member.name),
-                        'bottom': f'To {member.guild.name}',
-                        'text': '#CCCCCC',
-                        'avatarborder': '#CCCCCC',
-                        'avatarbackground': '#CCCCCC',
+                        'middle': f"{member.name} joined Prism",
+                        'name': "We now have",
+                        'bottom': f'{member_count} members',
+                        'text': discord.colour.Color.random(),
+                        'avatarborder': discord.colour.Color.random(),
+                        'avatarbackground': discord.colour.Color.random(),
                         'background': "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg"
                     }
                 )
@@ -1163,32 +1410,54 @@ async def lp(ctx, *, message):
              description="creates an embed",
              options=[
                  create_option(
-                     name="title",
-                     description="The title of the embed",
-                     option_type=option_type["string"],
-                     required=True
-                 ), create_option(
-                     name="description",
-                     description="The description of the embed",
-                     option_type=option_type["string"],
-                     required=True
-                 ), create_option(
                      name="channel",
                      description="The channel to send to",
                      option_type=option_type["channel"],
                      required=True
+                 ),
+                 create_option(
+                     name="title",
+                     description="The title of the embed",
+                     option_type=option_type["string"],
+                     required=False
                  ), create_option(
-                     name="silent",
-                     description="Whether to show the creator",
-                     option_type=option_type["boolean"],
-                     required=True
+                     name="description",
+                     description="The description of the embed",
+                     option_type=option_type["string"],
+                     required=False
+                 ), create_option(
+                     name="image",
+                     description="A valid URL to use as the big image",
+                     option_type=option_type["string"],
+                     required=False
+                 ), create_option(
+                     name="thumbnail",
+                     description="A valid URL to use as the thumbnail",
+                     option_type=option_type["string"],
+                     required=False
+                 ), create_option(
+                     name="footer",
+                     description="The footer of the embed",
+                     option_type=option_type["string"],
+                     required=False
                  )
              ])
 @check(has_perms)
-async def embed(ctx: SlashContext, *, title, description, channel: discord.TextChannel, silent):
-    embed = discord.Embed(title=title, description=description, color=ctx.author.color)
-    if not silent:
-        embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+async def embed(ctx: SlashContext, *, title=None, description=None, image=None, thumbnail=None, footer=None, channel: discord.TextChannel):
+    if title is None:
+        title = ""
+    if description is None:
+        description = ""
+    embed = discord.Embed(title=title,
+                          description=description,
+                          color=ctx.author.color
+                          )
+    if image is not None:
+        embed.set_image(url=thumbnail)
+    if thumbnail is not None:
+        embed.set_thumbnail(url=thumbnail)
+    if footer is not None:
+        embed.set_footer(text=footer)
     await ctx.send("Embed sent", hidden=True)
     await channel.send(embed=embed)
 
@@ -1229,6 +1498,7 @@ async def whitelist(ctx, member: discord.Member):
     embed.set_footer(text=f"Whitelisted by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
     embed.set_author(name="📋 User added to whitelist")
     await channel.send(embed=embed)
+    await ctx.send("Done!", hidden=True)
 
 
 @slash.slash(name="edit-embed",
@@ -1244,24 +1514,43 @@ async def whitelist(ctx, member: discord.Member):
                      name="title",
                      description="The title of the embed",
                      option_type=option_type["string"],
-                     required=True
+                     required=False
                  ), create_option(
                      name="description",
                      description="The description of the embed",
                      option_type=option_type["string"],
-                     required=True
+                     required=False
                  ), create_option(
-                     name="silent",
-                     description="Whether to show the creator",
-                     option_type=option_type["boolean"],
-                     required=True
+                     name="image",
+                     description="A valid URL to use as the big image",
+                     option_type=option_type["string"],
+                     required=False
+                 ), create_option(
+                     name="thumbnail",
+                     description="A valid URL to use as the thumbnail",
+                     option_type=option_type["string"],
+                     required=False
+                 ), create_option(
+                     name="footer",
+                     description="The footer of the embed",
+                     option_type=option_type["string"],
+                     required=False
                  )
              ])
 @check(has_perms)
-async def embed(ctx: SlashContext, *, embedlink, title, description, silent):
+async def embed(ctx: SlashContext, *, embedlink, title=None, description=None, image=None, thumbnail=None, footer=None):
+    if title is None:
+        title = ""
+    if description is None:
+        description = ""
     newembed = discord.Embed(title=title, description=description, color=ctx.author.color)
-    if not silent:
-        embed.set_footer(text=f"Issued by {ctx.author.display_name}", icon_url=ctx.author.avatar_url)
+
+    if image is not None:
+        newembed.set_image(url=thumbnail)
+    if thumbnail is not None:
+        newembed.set_thumbnail(url=thumbnail)
+    if footer is not None:
+        newembed.set_footer(text=footer)
     await ctx.send("Embed edited", hidden=True)
     editembed = embedlink.split('/')
     message = await bot.get_guild(int(editembed[-3])).get_channel(int(editembed[-2])).fetch_message(int(editembed[-1]))

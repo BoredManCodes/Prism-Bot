@@ -6,6 +6,9 @@ import os
 import subprocess
 import sys
 import difflib
+import textwrap
+import traceback
+import re
 from base64 import urlsafe_b64encode
 import uuid
 from urllib import parse, request
@@ -758,8 +761,38 @@ async def transcript(ctx):
         .mention {
             color: #7289da;
         }
-    '''
+        .botTag {
+            height: 0.9375rem;
+            padding: 0px 0.275rem;
+            margin-top: 0.075em;
+            border-radius: 0.1875rem;
+            background: #5961ec;
+            font-size: 0.625rem;
+            text-transform: uppercase;
+            vertical-align: top;
+            display: inline-flex;
+            align-items: center;
+            flex-shrink: 0;
+            text-indent: 0px;
+            position: relative;
+            top: 0.1rem;
+            margin-left: 0.25rem;
+            line-height: 1.375rem;
+            white-space: break-spaces;
+            overflow-wrap: break-word;
+        }
+        
+        .botText {
+            position: relative;
+            font-size: 10px;
+            line-height: 15px;
+            text-transform: uppercase;
+            text-indent: 0px;
+            color: rgb(255, 255, 255);
+            font-weight: 500;
+        }
 
+    '''
 
     def check_message_mention(msgs: discord.Message):
         user_mentions: list = msgs.mentions
@@ -821,16 +854,21 @@ async def transcript(ctx):
 
     for message in messages:
         if message.embeds:
-            content = 'Embed'
+            content = f'''Embed:
+            Title: {message.embeds[0].title}
+            
+            Description: {message.embeds[0].description}
+            
+            '''
 
         elif message.attachments:
             # IS AN IMAGE:
             if message.attachments[0].url.endswith(('jpg', 'png', 'gif', 'bmp')):
                 if message.content:
                     content = check_message_mention(
-                        message) + '<br>' + f"<img src=\"{message.attachments[0].url}\" width=\"200\" alt=\"Attachment\" \\>"
+                        message) + '<br>' + f"<a href=\"{message.attachments[0].url}\" target=\"_blank\"><img src=\"{message.attachments[0].url}\" width=\"200\" alt=\"Attachment\" \\></a>"
                 else:
-                    content = f"<img src=\"{message.attachments[0].url}\" width=\"200\" alt=\"Attachment\" \\>"
+                    content = f"<a href=\"{message.attachments[0].url}\" target=\"_blank\"><img src=\"{message.attachments[0].url}\" width=\"200\" alt=\"Attachment\" \\></a>"
 
             # IS A VIDEO
             elif message.attachments[0].url.endswith(('mp4', 'ogg', 'flv', 'mov', 'avi')):
@@ -869,12 +907,20 @@ async def transcript(ctx):
                 pass
         else:
             content = check_message_mention(message)
-
+        if message.author.bot:
+            isBot = '''<span class="botTag">
+                                <svg aria-label="Verified bot" class="botTagVerified" aria-hidden="false" width="16" height="16" viewBox="0 0 16 15.2">
+                                    <path d="M7.4,11.17,4,8.62,5,7.26l2,1.53L10.64,4l1.36,1Z" fill="currentColor"></path>
+                                 </svg>                                 
+                                <span class="botText">BOT</span>
+                            </span>'''
+        else:
+            isBot = ""
         f += f'''
         <div class="message-group">
             <div class="author-avatar-container"><img class=author-avatar src={message.author.avatar_url}></div>
             <div class="messages">
-                <span class="author-name" >{message.author.name}</span><span class="timestamp">{message.created_at.strftime("%b %d, %Y %H:%M")}</span>
+                <span class="author-name" >{message.author.name}</span>{isBot}<span class="timestamp">{message.created_at.strftime("%b %d, %Y %H:%M")}</span>
                 <div class="message">
                     <div class="content"><span class="markdown">{content}</span></div>
                 </div>

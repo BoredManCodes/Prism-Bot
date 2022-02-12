@@ -7,9 +7,11 @@ import subprocess
 import sys
 import difflib
 from base64 import urlsafe_b64encode
-from uuid import uuid4 as uuid
+import uuid
 from urllib import parse, request
 from urllib.parse import parse_qsl
+
+import uuid as uuid
 from PIL import Image
 from requests import PreparedRequest
 from decouple import config
@@ -786,7 +788,7 @@ async def transcript(ctx):
 
 
     messages: discord.TextChannel.history = await ctx.channel.history(limit=None, oldest_first=True).flatten()
-    title = str(f"Transcript of #{ctx.channel.name}")
+    title = str(f"Transcript of #{str(ctx.channel.name).encode('ascii', 'ignore')}")
     description = str(f"Saved by {ctx.author.display_name}")
     f = f'''
         <!DOCTYPE html>
@@ -795,8 +797,9 @@ async def transcript(ctx):
             <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
             <meta charset=utf-8>
             <meta name=viewport content="width=device-width">
-            <meta content={title} property="og:title" />
-            <meta content={description} property="og:description"/>
+            <meta content="Transcript saved" property="og:title" />
+            <meta content="{str(title).replace("b'", "").replace("'", "")}
+            {description}" property="og:description"/>
             <meta content="https://transcripts.boredman.net" property="og:url" />
             <meta content="https://paste.boredman.net/transcripts.png" property="og:image" />
             <meta content="#14adc4" data-react-helmet="true" name="theme-color" />
@@ -883,10 +886,10 @@ async def transcript(ctx):
         </body>
     </html>
     '''
-
-    with open(f"/root/Inquiry/transcripts/{urlsafe_b64encode(uuid().bytes)[0:22]}.html", mode='w', encoding='utf-8') as file:
+    id = uuid.uuid4()
+    with open(f"transcripts/{str(id)}.html", mode='w+', encoding='utf-8') as file:
         print(io.StringIO(f).read(), file=file)
-        await ctx.reply(f"Transcript: https://transcripts.boredman.net/{urlsafe_b64encode(uuid().bytes)[0:22]}")
+        await ctx.reply(f"Transcript: http://transcripts.boredman.net/{str(id)}.html")
 
 @bot.command(description="Sends some info on what the self roles are", category="Utility")
 async def rolehelp(ctx):

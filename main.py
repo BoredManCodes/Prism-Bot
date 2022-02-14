@@ -203,103 +203,53 @@ async def dm(ctx):
         print(f"Sent a DM to {member.display_name}")
 
 
+@bot.command()
+async def prismian(ctx):
+    for member in bot.get_guild(858547359804555264).members:
+        prismian_role = discord.utils.get(ctx.guild.roles, name='Prismian')
+        new_role = discord.utils.get(ctx.guild.roles, name='New Member')
+        general = bot.get_channel(858547359804555267)
+        if prismian_role not in member.roles and new_role in member.roles:
+            duration = datetime.now() - member.joined_at
+            hours, remainder = divmod(int(duration.total_seconds()), 3600)
+            days, hours = divmod(hours, 24)
+            if days >= 14:
+                mod_log = bot.get_channel(897765157940396052)
+                await mod_log.send(
+                    f"{member.display_name} has been a new member for {days} days and upgraded to Prismian today!")
+                await member.remove_roles(new_role)
+                await member.add_roles(prismian_role)
+                await general.send(
+                    "https://cdn.discordapp.com/attachments/861289278374150164/934758089075355708/party-popper-joypixels.gif")
+                await general.send(
+                    f"{member.mention} congrats on upgrading from New Member to Prismian today!")
+                logger.info(f"{member.display_name} has been upgraded to Prismian")
+
+
+
 @tasks.loop(hours=2)
 async def prismian():
     logger.info("Checking for Prismian upgrades")
     guild = bot.get_guild(858547359804555264)
-    general = bot.get_channel(858547359804555267)
-    mod_log = bot.get_channel(897765157940396052)
-    prism = bot.get_guild(858547359804555264)
-    founder = discord.utils.get(guild.roles, name="Founder")
-    whitelisted = discord.utils.get(guild.roles, name='Whitelisted')
-    linked = discord.utils.get(guild.roles, name='Linked')
-    prismian_role = discord.utils.get(guild.roles, name='Prismian')
-    new_role = discord.utils.get(guild.roles, name='New Member')
-    members_no_lookup = []
-    members_losing = []
-    members_being_kicked = []
-    members_not_found = []
-    for member in guild.members:
-        if founder in member.roles:
-            return
-        duration = datetime.now() - member.joined_at
-        hours, remainder = divmod(int(duration.total_seconds()), 3600)
-        days, hours = divmod(hours, 24)
-        if not member.bot:
-            if whitelisted in member.roles:
-                IP = config("GAME_IP")
-                url = f"http://{IP}/discord/{member.id}"
-                try:
-                    page = requests.get(url)
-                    stats = json.loads(page.text)
-                    time = stats['lastJoined']
-                    time = int(str(time)[:-3])
-                    duration = datetime.now() - datetime.fromtimestamp(time)
-                    hours, remainder = divmod(int(duration.total_seconds()), 3600)
-                    days, hours = divmod(hours, 24)
-                    if days >= 30:
-                        await member.remove_roles(whitelisted)
-                        members_losing.append(member.display_name)
-
-                except:
-                    members_no_lookup.append(member.display_name)
-            if prismian_role not in member.roles and new_role in member.roles:
-                if days >= 14:
-                    if linked in member.roles:
-                        await mod_log.send(
-                            f"{member.display_name} has been a new member for {days}"
-                            f" days and upgraded to Prismian today!")
-                        await general.send(
-                            "https://cdn.discordapp.com/attachments/861289278374150164/934758089075355708/party-popper-joypixels.gif")
-                        await general.send(
-                            f"{member.mention} congrats on upgrading from New Member to Prismian today!")
-                        await member.remove_roles(new_role)
-                        await member.add_roles(prismian_role)
-                        logger.info(f"{member.display_name} has been upgraded to Prismian")
-                    if linked not in member.roles:
-                        await member.send("Hello.\nI'm Prism Bot, I've detected you haven't joined the server during your trial period.\n"
-                                          "I believe you have no intention to play. If I am wrong please re-join the interview server and "
-                                          "inform a staff member of your intentions\nDo not reply to this message\n"
-                                          "https://discord.gg/XecRVnpb4J")
-                        await mod_log.send(
-                            f"{member.mention} needs to be kicked due to not joining the server during their trial period")
-        try:
-            oldestMessage = None
-            for channel in prism.text_channels:
-                fetchMessage = await channel.history().find(lambda m: m.author.id == member.id)
-                if fetchMessage is None:
-                    continue
-
-                if oldestMessage is None:
-                    oldestMessage = fetchMessage
-                else:
-                    if fetchMessage.created_at > oldestMessage.created_at:
-                        oldestMessage = fetchMessage
-
-            if (oldestMessage is not None):
-                minecraft_join_last = days
-                duration = datetime.now() - oldestMessage.created_at
-                hours, remainder = divmod(int(duration.total_seconds()), 3600)
-                days, hours = divmod(hours, 24)
-                if days and minecraft_join_last >= 60:
-                    members_being_kicked.append(f"Oldest message from {member.mention} is"
-                                       f" {days} days ago, They last joined {minecraft_join_last} days ago (Verification: <t:{time}:R>)")
-            else:
-                members_not_found.append(member.display_name)
-        except:
-            print("error")
-    members_no_lookup = str(members_no_lookup).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
-    members_losing = str(members_losing).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
-    members_being_kicked = str(members_being_kicked).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
-    members_not_found = str(members_not_found).replace('[', '').replace(']', '').replace(',', '\n').replace("'", "")
-    if len(members_no_lookup) > 0:
-        await mod_log.send(f"Couldn't look up last played status for\n```{members_no_lookup}\n```")
-    if len(members_losing) > 0:
-        await mod_log.send(f"```\n{members_losing}\n```just lost their whitelisted role")
-    if len(members_being_kicked) > 0:
-        await mod_log.send(f"The following members potentially need to be kicked due to inactivity\n{members_being_kicked}\n")
-    if len(members_not_found) > 0:
-        await mod_log.send(f"No message found for these members. Please lookup manually\n{members_not_found}")
+    for member in bot.get_guild(858547359804555264).members:
+        prismian_role = discord.utils.get(guild.roles, name='Prismian')
+        new_role = discord.utils.get(guild.roles, name='New Member')
+        general = bot.get_channel(858547359804555267)
+        if prismian_role not in member.roles and new_role in member.roles:
+            duration = datetime.now() - member.joined_at
+            hours, remainder = divmod(int(duration.total_seconds()), 3600)
+            days, hours = divmod(hours, 24)
+            if days >= 14:
+                mod_log = bot.get_channel(897765157940396052)
+                await mod_log.send(
+                    f"{member.display_name} has been a new member for {days} days and upgraded to Prismian today!")
+                await member.remove_roles(new_role)
+                await member.add_roles(prismian_role)
+                await general.send(
+                    "https://cdn.discordapp.com/attachments/861289278374150164/934758089075355708/party-popper-joypixels.gif")
+                await general.send(
+                    f"{member.mention} congrats on upgrading from New Member to Prismian today!")
+                logger.info(f"{member.display_name} has been upgraded to Prismian")
     logger.info("Done checking for Prismian upgrades")
 
 

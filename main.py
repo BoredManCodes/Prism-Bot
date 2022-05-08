@@ -3015,10 +3015,7 @@ async def whois(ctx: Context, *, user: discord.Member = None):
         )
         embed.add_field(name="World:", value=stats["world"], inline=True)
         # staff stuffs
-        overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
-        if (
-            overwrite.read_messages
-        ):  # if everyone does not have read messages permission, syntax is confuse
+        if ctx.channel.category_id == 861041901921632276:
             embed.add_field(
                 name="IP:",
                 value=f"[{stats['address']}](https://iplocation.io/ip/{stats['address']} \"Click for more info\")",
@@ -3111,10 +3108,7 @@ async def game(ctx, user: discord.Member = None):
         )
         embed.add_field(name="World:", value=stats["world"], inline=True)
         # staff stuffs
-        overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
-        if (
-            overwrite.read_messages
-        ):  # if everyone does not have read messages permission, syntax is confuse
+        if ctx.channel.category_id == 861041901921632276:
             embed.add_field(
                 name="IP:",
                 value=f"[{stats['address']}](https://iplocation.io/ip/{stats['address']} \"Click for more info\")",

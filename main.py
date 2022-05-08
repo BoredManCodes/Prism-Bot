@@ -13,7 +13,7 @@ from base64 import urlsafe_b64encode
 import uuid
 from urllib import parse, request
 from urllib.parse import parse_qsl
-
+from millify import prettify
 import uuid as uuid
 from PIL import Image
 from requests import PreparedRequest
@@ -2096,7 +2096,6 @@ async def embed(
 )
 @check(has_perms)
 async def whitelist(ctx: SlashContext, member: discord.Member):
-    channel = bot.get_channel(869280855657447445)
     role = discord.utils.get(member.guild.roles, name="Whitelisted")
     await member.add_roles(role)
     message = f"Added {member.mention} to the whitelist"
@@ -2105,7 +2104,7 @@ async def whitelist(ctx: SlashContext, member: discord.Member):
         text=f"Whitelisted by {ctx.author.display_name}", icon_url=ctx.author.avatar_url
     )
     embed.set_author(name="📋 User added to whitelist")
-    await channel.send(embed=embed)
+    await ctx.send(embed=embed)
 
 
 @bot.command(
@@ -2956,102 +2955,192 @@ async def whois(ctx: Context, *, user: discord.Member = None):
         )
     embed.set_footer(text="ID: " + str(user.id))
     await ctx.send(embed=embed)
-    # Game stuffs
-    # IP = config("GAME_IP")
-    # url = f"http://{IP}/players/{user.display_name}/stats"
-    # # print(f"http://{IP}/players/{user.display_name}/stats")
-    # page = requests.get(url, headers={"secret":config("SECRET")})
-    # stats = json.loads(page.text)
-    # try:
-    #     if stats['error']:
-    #         return
-    # except:
-    #     # Game time
-    #     sec = int(stats["time"])
-    #     sec_value = sec % (24 * 3600)
-    #     hour_value = sec_value // 3600
-    #     sec_value %= 3600
-    #     min_value = sec_value // 60
-    #     sec_value %= 60
-    #     if hour_value != 0:
-    #         game_time = f"{hour_value} hours, {min_value} minutes"
-    #     else:
-    #         game_time = f"{min_value} minutes"
-    #     # Death time
-    #     sec = int(stats["death"])
-    #     sec_value = sec % (24 * 3600)
-    #     hour_value = sec_value // 3600
-    #     sec_value %= 3600
-    #     min_value = sec_value // 60
-    #     sec_value %= 60
-    #     if hour_value != 0:
-    #         death_time = f"{hour_value} hours, {min_value} minutes"
-    #     else:
-    #         death_time = f"{min_value} minutes"
-    #     embed = discord.Embed(color=top_role.color,
-    #                           title=f"{user.display_name}'s current game stats")
-    #     embed.add_field(name="Time spent in game:", value=game_time, inline=True)
-    #     embed.add_field(name="Time since last death:", value=death_time, inline=True)
-    #     embed.add_field(name="Kills:", value=stats["kills"], inline=True)
-    #     embed.add_field(name="Deaths:", value=stats["deaths"], inline=True)
-    #     embed.add_field(name="XP level:", value=stats["level"], inline=True)
-    #     embed.add_field(name="Health:", value=stats["health"], inline=True)
-    #     embed.add_field(name="Hunger:", value=stats["food"], inline=True)
-    #     embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
-    #     embed.add_field(name="World:", value=stats["world"], inline=True)
-    #     embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay")
-    #     await ctx.send(embed=embed)
+    IP = config("GAME_IP")
+    url = f"http://{IP}/players/{user.display_name}"
+    headers = {"secret": config("SECRET")}
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url) as resp:
+            content = await resp.text()
+    if resp.status != 200:
+        await ctx.send("Couldn't contact server")
+        return
+    stats = json.loads(content)
+    try:
+        if stats["error"]:
+            return
+    except:
+        # Game time
+        sec = int(stats["time"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            game_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            game_time = f"{min_value} minutes"
+        # Death time
+        sec = int(stats["death"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            death_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            death_time = f"{min_value} minutes"
+        if stats["online"]:
+            embed = discord.Embed(
+                color=discord.colour.Color.green(),
+                title=f"{user.display_name}'s current game stats",
+            )
+            last_online = "Now"
+        else:
+            embed = discord.Embed(
+                color=discord.colour.Color.red(),
+                title=f"{user.display_name}'s cached game stats",
+            )
+            last_online = f"<t:{str(stats['lastJoined'])[:-3]}:R>"
+        # embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        # embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Kills:", value=prettify(stats["kills"]), inline=True)
+        embed.add_field(name="Deaths:", value=prettify(stats["deaths"]), inline=True)
+        embed.add_field(name="XP level:", value=prettify(stats["level"]), inline=True)
+        embed.add_field(name="Health:", value=stats["health"][:4], inline=True)
+        embed.add_field(name="Hunger:", value=stats["food"][:4], inline=True)
+        embed.add_field(
+            name="Times jumped:", value=prettify(stats["jumps"]), inline=True
+        )
+        embed.add_field(name="World:", value=stats["world"], inline=True)
+        # staff stuffs
+        overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
+        if (
+            overwrite.read_messages
+        ):  # if everyone does not have read messages permission, syntax is confuse
+            embed.add_field(
+                name="IP:",
+                value=f"[{stats['address']}](https://iplocation.io/ip/{stats['address']} \"Click for more info\")",
+                inline=True,
+            )
+            embed.add_field(
+                name="UUID",
+                value=f"[{stats['uuid']}](https://namemc.com/profile/{stats['username']} \"Click for more info\")",
+                inline=True,
+            )
+            embed.add_field(
+                name="Gamemode:", value=stats["gamemode"].lower(), inline=True
+            )
+            embed.add_field(name="Bed location:", value=stats["bed"], inline=True)
+            location = stats["location"].split(",")
+            embed.add_field(
+                name="Their location:",
+                value=f"{location[0].split('.')[0]},{location[1].split('.')[0]},{location[2].split('.')[0]}",
+                inline=True,
+            )
+        embed.add_field(name="Last online:", value=last_online, inline=True)
+
+        embed.set_thumbnail(
+            url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay"
+        )
+        await ctx.send(embed=embed)
 
 
 @bot.command()
 async def game(ctx, user: discord.Member = None):
     if user is None:
         user = ctx.guild.get_member(ctx.author.id)
-    # Game stuffs
-    # IP = config("GAME_IP")
-    # url = f"http://{IP}/players/{user.display_name}/stats"
-    # # print(f"http://{IP}/players/{user.display_name}/stats")
-    # page = requests.get(url, headers={"secret":config("SECRET")})
-    # stats = json.loads(page.text)
-    # try:
-    #     if stats['error']:
-    #         return
-    # except:
-    #     # Game time
-    #     sec = int(stats["time"])
-    #     sec_value = sec % (24 * 3600)
-    #     hour_value = sec_value // 3600
-    #     sec_value %= 3600
-    #     min_value = sec_value // 60
-    #     sec_value %= 60
-    #     if hour_value != 0:
-    #         game_time = f"{hour_value} hours, {min_value} minutes"
-    #     else:
-    #         game_time = f"{min_value} minutes"
-    #     # Death time
-    #     sec = int(stats["death"])
-    #     sec_value = sec % (24 * 3600)
-    #     hour_value = sec_value // 3600
-    #     sec_value %= 3600
-    #     min_value = sec_value // 60
-    #     sec_value %= 60
-    #     if hour_value != 0:
-    #         death_time = f"{hour_value} hours, {min_value} minutes"
-    #     else:
-    #         death_time = f"{min_value} minutes"
-    #     embed = discord.Embed(color=discord.colour.Color.red(),
-    #                           title=f"{user.display_name}'s current game stats")
-    #     embed.add_field(name="Time spent in game:", value=game_time, inline=True)
-    #     embed.add_field(name="Time since last death:", value=death_time, inline=True)
-    #     embed.add_field(name="Kills:", value=stats["kills"], inline=True)
-    #     embed.add_field(name="Deaths:", value=stats["deaths"], inline=True)
-    #     embed.add_field(name="XP level:", value=stats["level"], inline=True)
-    #     embed.add_field(name="Health:", value=stats["health"], inline=True)
-    #     embed.add_field(name="Hunger:", value=stats["food"], inline=True)
-    #     embed.add_field(name="Times jumped:", value=stats["jumps"], inline=True)
-    #     embed.add_field(name="World:", value=stats["world"], inline=True)
-    #     embed.set_thumbnail(url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay")
-    #     await ctx.send(embed=embed)
+    IP = config("GAME_IP")
+    url = f"http://{IP}/players/{user.display_name}"
+    headers = {"secret": config("SECRET")}
+    async with aiohttp.ClientSession(headers=headers) as session:
+        async with session.get(url) as resp:
+            content = await resp.text()
+    if resp.status != 200:
+        await ctx.send("Couldn't contact server")
+        return
+    stats = json.loads(content)
+    try:
+        if stats["error"]:
+            return
+    except:
+        # Game time
+        sec = int(stats["time"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            game_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            game_time = f"{min_value} minutes"
+        # Death time
+        sec = int(stats["death"])
+        sec_value = sec % (24 * 3600)
+        hour_value = sec_value // 3600
+        sec_value %= 3600
+        min_value = sec_value // 60
+        sec_value %= 60
+        if hour_value != 0:
+            death_time = f"{hour_value} hours, {min_value} minutes"
+        else:
+            death_time = f"{min_value} minutes"
+        if stats["online"]:
+            embed = discord.Embed(
+                color=discord.colour.Color.green(),
+                title=f"{user.display_name}'s current game stats",
+            )
+            last_online = "Now"
+        else:
+            embed = discord.Embed(
+                color=discord.colour.Color.red(),
+                title=f"{user.display_name}'s cached game stats",
+            )
+            last_online = f"<t:{str(stats['lastJoined'])[:-3]}:R>"
+        # embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        # embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Kills:", value=prettify(stats["kills"]), inline=True)
+        embed.add_field(name="Deaths:", value=prettify(stats["deaths"]), inline=True)
+        embed.add_field(name="XP level:", value=prettify(stats["level"]), inline=True)
+        embed.add_field(name="Health:", value=stats["health"][:4], inline=True)
+        embed.add_field(name="Hunger:", value=stats["food"][:4], inline=True)
+        embed.add_field(
+            name="Times jumped:", value=prettify(stats["jumps"]), inline=True
+        )
+        embed.add_field(name="World:", value=stats["world"], inline=True)
+        # staff stuffs
+        overwrite = ctx.channel.overwrites_for(ctx.guild.default_role)
+        if (
+            overwrite.read_messages
+        ):  # if everyone does not have read messages permission, syntax is confuse
+            embed.add_field(
+                name="IP:",
+                value=f"[{stats['address']}](https://iplocation.io/ip/{stats['address']} \"Click for more info\")",
+                inline=True,
+            )
+            embed.add_field(
+                name="UUID",
+                value=f"[{stats['uuid']}](https://namemc.com/profile/{stats['username']} \"Click for more info\")",
+                inline=True,
+            )
+            embed.add_field(
+                name="Gamemode:", value=stats["gamemode"].lower(), inline=True
+            )
+            embed.add_field(name="Bed location:", value=stats["bed"], inline=True)
+            location = stats["location"].split(",")
+            embed.add_field(
+                name="Their location:",
+                value=f"{location[0].split('.')[0]},{location[1].split('.')[0]},{location[2].split('.')[0]}",
+                inline=True,
+            )
+        embed.add_field(name="Last online:", value=last_online, inline=True)
+
+        embed.set_thumbnail(
+            url=f"https://heads.discordsrv.com/head.png?name={user.display_name}&overlay"
+        )
+        await ctx.send(embed=embed)
 
 
 @bot.command(description="Shows some info on users", category="Utility")

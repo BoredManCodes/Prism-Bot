@@ -640,7 +640,9 @@ async def on_component(ctx: ComponentContext):
             print(io.StringIO(f).read(), file=file)
 
         sentences_log = bot.get_channel(875356199174938644)
-        user_from_string = int(ctx.custom_id.split("release")[1])
+        user_from_string = int(ctx.custom_id.split("|")[1])
+        further_info = str(ctx.custom_id.split("|")[2])
+        delete_channel = str(ctx.custom_id.split("|")[3])
         user = discord.utils.get(ctx.guild.members, id=user_from_string)
         user: discord.Member
         embed = discord.Embed(title=user.name, colour=discord.colour.Color.green())
@@ -660,6 +662,12 @@ async def on_component(ctx: ComponentContext):
             .replace("]", ""),
             inline=True,
         )
+        if further_info != "None":
+            embed.add_field(
+                name="Further info:",
+                value=further_info,
+                inline=True,
+            )
         embed.add_field(
             name="Transcript:",
             value=f"[Click here](http://transcripts.boredman.net/{str(id)}.html)",
@@ -672,16 +680,20 @@ async def on_component(ctx: ComponentContext):
             user: discord.PermissionOverwrite(read_messages=False),
             staff: discord.PermissionOverwrite(read_messages=True),
         }
-        await ctx.channel.edit(overwrites=overwrites)
-        muted = discord.utils.get(ctx.guild.roles, name="Muted")
-        await user.remove_roles(muted)
-        try:
-            await user.send(
-                f"Hi there, I've taken the liberty of sending you a copy of your arrest transcript\n"
-                f"http://transcripts.boredman.net/{str(id)}.html"
-            )
-        except Exception:
-            print("user has DM's closed")
+        if delete_channel == "True":
+            if ctx.channel.category_id == 972431466514497546:
+                await ctx.channel.delete()
+        else:
+            await ctx.channel.edit(overwrites=overwrites)
+            muted = discord.utils.get(ctx.guild.roles, name="Muted")
+            await user.remove_roles(muted)
+            try:
+                await user.send(
+                    f"Hi there, I've taken the liberty of sending you a copy of your arrest transcript\n"
+                    f"http://transcripts.boredman.net/{str(id)}.html"
+                )
+            except Exception:
+                print("user has DM's closed")
 
     if ctx.custom_id == "gimme-roles":
         for role in ctx.selected_options:
@@ -3426,19 +3438,32 @@ async def arrest(ctx: SlashContext, user, reason):
             description="The user to release",
             option_type=option_type["user"],
             required=True,
+        ),
+        create_option(
+            name="further_info",
+            description="Do you have any further info you'd like to add?",
+            option_type=option_type["string"],
+            required=False,
+        ),
+        create_option(
+            name="delete_channel",
+            description="Do you want to delete this channel as well?",
+            option_type=option_type["boolean"],
+            required=False,
         )
     ],
 )
 @check(has_perms)
-async def release(ctx: SlashContext, user):
+async def release(ctx: SlashContext, user, further_info=None, delete_channel=False):
     select = create_select(
         options=[
             create_select_option("No punishment", value="No punishment"),
+            create_select_option("Warning", value="Warning"),
             create_select_option("Temp ban", value="Temp ban"),
             create_select_option("Perma ban", value="Perma ban"),
             create_select_option("Mute", value="Mute"),
         ],
-        custom_id=f"release{user.id}",
+        custom_id=f"release|{user.id}|{str(further_info)}|{str(delete_channel)}",
         placeholder="Select a punishment",
         min_values=1,
         max_values=4,

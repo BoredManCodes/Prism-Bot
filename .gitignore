@@ -9,3 +9,9 @@ roles.json
 messages.log
 roles.json
 *.log
+venv/*
+.idea/misc.xml
+.idea/Embed.iml
+old.txt
+.idea/Embed.iml
+.idea/misc.xml

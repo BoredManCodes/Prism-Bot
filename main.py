@@ -45,10 +45,13 @@ import requests
 import json
 from durations import Duration
 import time
-from datetime import datetime
+import datetime
+import dateutil.relativedelta
 import logging
 import random
 import sentry_sdk
+import inflect
+p = inflect.engine()
 
 if config("DEBUG"):
     environment = "development"
@@ -233,7 +236,7 @@ async def prismian(ctx):
         new_role = discord.utils.get(ctx.guild.roles, name="New Member")
         general = bot.get_channel(858547359804555267)
         if prismian_role not in member.roles and new_role in member.roles:
-            duration = datetime.now() - member.joined_at
+            duration = datetime.datetime.now() - member.joined_at
             hours, remainder = divmod(int(duration.total_seconds()), 3600)
             days, hours = divmod(hours, 24)
             if days >= 14:
@@ -261,7 +264,7 @@ async def prismian():
         new_role = discord.utils.get(guild.roles, name="New Member")
         general = bot.get_channel(858547359804555267)
         if prismian_role not in member.roles and new_role in member.roles:
-            duration = datetime.now() - member.joined_at
+            duration = datetime.datetime.now() - member.joined_at
             hours, remainder = divmod(int(duration.total_seconds()), 3600)
             days, hours = divmod(hours, 24)
             if days >= 14:
@@ -304,7 +307,7 @@ async def updating_embed():
             embed = discord.Embed(
                 color=discord.colour.Color.red(),
                 title=f"No one is currently in game",
-                description=f"Last updated at {datetime.now()}",
+                description=f"Last updated at {datetime.datetime.now()}",
             )
             await message.edit(embed=embed)
             return
@@ -1469,6 +1472,15 @@ async def banner(ctx, member: discord.Member = None):
 
 @bot.event
 async def on_message(message):
+    message: discord.Message
+    # Server showcase
+    if not message.author == bot.user:
+        if message.channel.id == 973448980996440105:
+            if not message.attachments:
+                await message.delete()
+                await message.channel.send(f"Heyo {message.author.mention}, please only post images here", delete_after=10)
+
+    # Auto reacts
     if "plugin" in message.content.lower():
         await message.add_reaction("<:cranky:870165423272886282>")
     if "bored" in message.content.lower():
@@ -2816,11 +2828,11 @@ async def context_menu(ctx: MenuContext):
                 value=f"{activity} {user.activities[0].name}",
                 inline=False,
             )
-    joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split(
+    joined_time = str((user.joined_at - datetime.datetime(1970, 1, 1)).total_seconds()).split(
         "."
     )
     discord_joined_time = str(
-        (user.created_at - datetime(1970, 1, 1)).total_seconds()
+        (user.created_at - datetime.datetime(1970, 1, 1)).total_seconds()
     ).split(".")
 
     embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
@@ -2942,11 +2954,11 @@ async def whois(ctx: Context, *, user: discord.Member = None):
                 value=f"{activity} {user.activities[0].name}",
                 inline=False,
             )
-    joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split(
+    joined_time = str((user.joined_at - datetime.datetime(1970, 1, 1)).total_seconds()).split(
         "."
     )
     discord_joined_time = str(
-        (user.created_at - datetime(1970, 1, 1)).total_seconds()
+        (user.created_at - datetime.datetime(1970, 1, 1)).total_seconds()
     ).split(".")
     embed.add_field(name="Discord Name", value=f"{user.name}#{user.discriminator}")
     embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
@@ -2982,27 +2994,43 @@ async def whois(ctx: Context, *, user: discord.Member = None):
             return
     except:
         # Game time
-        sec = int(stats["time"])
-        sec_value = sec % (24 * 3600)
-        hour_value = sec_value // 3600
-        sec_value %= 3600
-        min_value = sec_value // 60
-        sec_value %= 60
-        if hour_value != 0:
-            game_time = f"{hour_value} hours, {min_value} minutes"
-        else:
-            game_time = f"{min_value} minutes"
-        # Death time
-        sec = int(stats["death"])
-        sec_value = sec % (24 * 3600)
-        hour_value = sec_value // 3600
-        sec_value %= 3600
-        min_value = sec_value // 60
-        sec_value %= 60
-        if hour_value != 0:
-            death_time = f"{hour_value} hours, {min_value} minutes"
-        else:
-            death_time = f"{min_value} minutes"
+
+        ts = int(str(datetime.datetime.now().timestamp()).split(".")[0])
+        game_time = ts - int(stats["time"])
+        dt1 = datetime.datetime.fromtimestamp(game_time)
+        dt2 = datetime.datetime.fromtimestamp(ts)
+        rd = dateutil.relativedelta.relativedelta(dt2, dt1)
+        game_time = ''
+        if rd.years != 0:
+            game_time += f'{rd.years} {p.plural("year", rd.years)}, '
+        if rd.months != 0:
+            game_time += f'{rd.months} {p.plural("month", rd.months)}, '
+        if rd.days != 0:
+            game_time += f'{rd.days} {p.plural("day", rd.days)}, '
+        if rd.hours != 0:
+            game_time += f'{rd.hours} {p.plural("hour", rd.hours)}, '
+        if rd.minutes != 0:
+            game_time += f'{rd.minutes} {p.plural("minute", rd.minutes)}, '
+        if rd.seconds != 0:
+            game_time += f'{rd.seconds} {p.plural("second", rd.seconds)}'
+        death_time = ts - int(stats['death'])
+        dt1 = datetime.datetime.fromtimestamp(death_time)
+        dt2 = datetime.datetime.fromtimestamp(ts)
+        rd = dateutil.relativedelta.relativedelta(dt2, dt1)
+        death_time = ''
+        if rd.years != 0:
+            death_time += f'{rd.years} {p.plural("year", rd.years)}, '
+        if rd.months != 0:
+            death_time += f'{rd.months} {p.plural("month", rd.months)}, '
+        if rd.days != 0:
+            death_time += f'{rd.days} {p.plural("day", rd.days)}, '
+        if rd.hours != 0:
+            death_time += f'{rd.hours} {p.plural("hour", rd.hours)}, '
+        if rd.minutes != 0:
+            death_time += f'{rd.minutes} {p.plural("minute", rd.minutes)}, '
+        if rd.seconds != 0:
+            death_time += f'{rd.seconds} {p.plural("second", rd.seconds)}'
+
         if stats["online"]:
             embed = discord.Embed(
                 color=discord.colour.Color.green(),
@@ -3015,8 +3043,8 @@ async def whois(ctx: Context, *, user: discord.Member = None):
                 title=f"{user.display_name}'s cached game stats",
             )
             last_online = f"<t:{str(stats['lastJoined'])[:-3]}:R>"
-        # embed.add_field(name="Time spent in game:", value=game_time, inline=True)
-        # embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        embed.add_field(name="Time since last death:", value=death_time, inline=True)
         embed.add_field(name="Kills:", value=prettify(stats["kills"]), inline=True)
         embed.add_field(name="Deaths:", value=prettify(stats["deaths"]), inline=True)
         embed.add_field(name="XP level:", value=prettify(stats["level"]), inline=True)
@@ -3075,27 +3103,43 @@ async def game(ctx, user: discord.Member = None):
             return
     except:
         # Game time
-        sec = int(stats["time"])
-        sec_value = sec % (24 * 3600)
-        hour_value = sec_value // 3600
-        sec_value %= 3600
-        min_value = sec_value // 60
-        sec_value %= 60
-        if hour_value != 0:
-            game_time = f"{hour_value} hours, {min_value} minutes"
-        else:
-            game_time = f"{min_value} minutes"
-        # Death time
-        sec = int(stats["death"])
-        sec_value = sec % (24 * 3600)
-        hour_value = sec_value // 3600
-        sec_value %= 3600
-        min_value = sec_value // 60
-        sec_value %= 60
-        if hour_value != 0:
-            death_time = f"{hour_value} hours, {min_value} minutes"
-        else:
-            death_time = f"{min_value} minutes"
+
+        ts = int(str(datetime.datetime.now().timestamp()).split(".")[0])
+        game_time = ts - int(stats["time"])
+        dt1 = datetime.datetime.fromtimestamp(game_time)
+        dt2 = datetime.datetime.fromtimestamp(ts)
+        rd = dateutil.relativedelta.relativedelta(dt2, dt1)
+        game_time = ''
+        if rd.years != 0:
+            game_time += f'{rd.years} {p.plural("year", rd.years)}, '
+        if rd.months != 0:
+            game_time += f'{rd.months} {p.plural("month", rd.months)}, '
+        if rd.days != 0:
+            game_time += f'{rd.days} {p.plural("day", rd.days)}, '
+        if rd.hours != 0:
+            game_time += f'{rd.hours} {p.plural("hour", rd.hours)}, '
+        if rd.minutes != 0:
+            game_time += f'{rd.minutes} {p.plural("minute", rd.minutes)}, '
+        if rd.seconds != 0:
+            game_time += f'{rd.seconds} {p.plural("second", rd.seconds)}'
+        death_time = ts - int(stats['death'])
+        dt1 = datetime.datetime.fromtimestamp(death_time)
+        dt2 = datetime.datetime.fromtimestamp(ts)
+        rd = dateutil.relativedelta.relativedelta(dt2, dt1)
+        death_time = ''
+        if rd.years != 0:
+            death_time += f'{rd.years} {p.plural("year", rd.years)}, '
+        if rd.months != 0:
+            death_time += f'{rd.months} {p.plural("month", rd.months)}, '
+        if rd.days != 0:
+            death_time += f'{rd.days} {p.plural("day", rd.days)}, '
+        if rd.hours != 0:
+            death_time += f'{rd.hours} {p.plural("hour", rd.hours)}, '
+        if rd.minutes != 0:
+            death_time += f'{rd.minutes} {p.plural("minute", rd.minutes)}, '
+        if rd.seconds != 0:
+            death_time += f'{rd.seconds} {p.plural("second", rd.seconds)}'
+
         if stats["online"]:
             embed = discord.Embed(
                 color=discord.colour.Color.green(),
@@ -3108,8 +3152,8 @@ async def game(ctx, user: discord.Member = None):
                 title=f"{user.display_name}'s cached game stats",
             )
             last_online = f"<t:{str(stats['lastJoined'])[:-3]}:R>"
-        # embed.add_field(name="Time spent in game:", value=game_time, inline=True)
-        # embed.add_field(name="Time since last death:", value=death_time, inline=True)
+        embed.add_field(name="Time spent in game:", value=game_time, inline=True)
+        embed.add_field(name="Time since last death:", value=death_time, inline=True)
         embed.add_field(name="Kills:", value=prettify(stats["kills"]), inline=True)
         embed.add_field(name="Deaths:", value=prettify(stats["deaths"]), inline=True)
         embed.add_field(name="XP level:", value=prettify(stats["level"]), inline=True)
@@ -3236,11 +3280,11 @@ async def whois(ctx, *, user: discord.Member = None):
                 value=f"{activity} {user.activities[0].name}",
                 inline=False,
             )
-    joined_time = str((user.joined_at - datetime(1970, 1, 1)).total_seconds()).split(
+    joined_time = str((user.joined_at - datetime.datetime(1970, 1, 1)).total_seconds()).split(
         "."
     )
     discord_joined_time = str(
-        (user.created_at - datetime(1970, 1, 1)).total_seconds()
+        (user.created_at - datetime.datetime(1970, 1, 1)).total_seconds()
     ).split(".")
     embed.add_field(name="Discord Name", value=f"{user.name}#{user.discriminator}")
     embed.add_field(name="Joined Server", value=f"<t:{joined_time[0]}:R>", inline=False)
@@ -3490,7 +3534,7 @@ async def kill(ctx: Context):
 async def emojilist(ctx):
     await ctx.message.delete()
     for emoji in ctx.guild.emojis:
-        creation = str((emoji.created_at - datetime(1970, 1, 1)).total_seconds()).split(
+        creation = str((emoji.created_at - datetime.datetime(1970, 1, 1)).total_seconds()).split(
             "."
         )
         await ctx.send(

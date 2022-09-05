@@ -51,6 +51,7 @@ import logging
 import random
 import sentry_sdk
 import inflect
+
 p = inflect.engine()
 
 if config("DEBUG"):
@@ -190,7 +191,7 @@ async def on_ready():
     print(f"╚═══════════════════════════════════════════════════")
     prismian.start()
     changelog.start()
-    # updating_embed.start()
+    website_loop.start()
     global RJD, roles_json
     testing_zone = bot.get_guild(int(config("guild_id")))
     try:
@@ -220,13 +221,42 @@ async def on_ready():
             member[1] -= current_time
 
 
-@bot.command
+# task to check who is president, vice president and who has the other important website roles
+@tasks.loop(seconds=600)
+async def website_loop():
+    print("Website Loop")
+    prism_guild = bot.get_guild(int(config("guild_id")))
+    interview_guild = bot.get_guild(861018927752151071)
+    new_member_role = discord.utils.get(prism_guild.roles, name="New Member")
+    application_channel = discord.utils.get(interview_guild.channels, id=1008883079076659400)
+    def get_sorted_role(role_id: int) -> str:
+        return ", ".join(sorted([member.display_name for member in (prism_guild.get_role(role_id)).members], key=str.casefold))
+
+    data = {
+        "president": get_sorted_role(858548175711240192),
+        "vice_president": get_sorted_role(858548322158247947),
+        "adjudicators": get_sorted_role(883556570703740988),
+        "head_admin": get_sorted_role(933465436266323989),
+        "admins": get_sorted_role(858547762080776192),
+        "mods": get_sorted_role(858547638719086613),
+        "training_mods": get_sorted_role(931458136584359966),
+        "member_count": int(prism_guild.member_count),
+        "new_members": len(new_member_role.members),
+        "application_status": str(application_channel.name)
+    }
+    with open("transcripts/website.json", "w+") as text_file:
+        json.dump(data, text_file)
+
+
+@bot.command()
 async def dm(ctx):
-    for member in ctx.guild.members:
-        await member.send(
-            "Hey there! This is just a reminder to vote in the current Prismian Presidential Election if you haven't already! You can do so in the election-votes."
-        )
-        print(f"Sent a DM to {member.display_name}")
+    user = discord.utils.get(ctx.guild.members, id="510748531926106113")
+    await user.remove_roles(883556570703740988)
+    #for member in ctx.guild.members:
+     #   await member.send(
+     #       "Hey there! This is just a reminder to vote in the current Prismian Presidential Election if you haven't already! You can do so in the election-votes."
+     #   )
+     #   print(f"Sent a DM to {member.display_name}")
 
 
 @bot.command()
@@ -356,9 +386,73 @@ async def updating_embed():
         await message.edit(embed=embed)
 
 
+@bot.command()
+async def dothesupportthing(ctx):
+    try:
+        support_category: discord.CategoryChannel = discord.utils.get(ctx.guild.categories, name="SUPPORT")
+        channel = discord.utils.get(support_category.channels, name="support")
+        await channel.purge(limit=10000)
+    except AttributeError:  # the category doesn't exist, so make it exist
+        support_category = await ctx.guild.create_category(name="SUPPORT")
+        channel = await support_category.create_text_channel(name="support")
+
+    button = [
+        create_button(
+            style=ButtonStyle.green,
+            label="Report a player/social issue",
+            custom_id="ticket|mod contact"
+        ), create_button(
+            style=ButtonStyle.blurple,
+            label="I just have a question",
+            custom_id="ticket|question"
+        ), create_button(
+            style=ButtonStyle.danger,
+            label="Report a technical issue",
+            custom_id="ticket|issue report"
+        ), create_button(
+            style=ButtonStyle.gray,
+            label="Something else",
+            custom_id="ticket|who really knows"
+        )
+    ]
+    action_row = create_actionrow(*button)
+    embed = discord.Embed(
+        title="Need help from a mod? Have a question? Want to report something odd?",
+        description="Simply press a button below and a channel will be made for you"
+    )
+    await channel.send(embed=embed, components=[action_row])
+
+
 @bot.event
 async def on_component(ctx: ComponentContext):
-    if "release" in ctx.custom_id:
+    if "ticket" in ctx.custom_id:
+        support_category: discord.CategoryChannel = discord.utils.get(ctx.guild.categories, name="SUPPORT")
+        staff = discord.utils.get(ctx.guild.roles, name="Staff")
+        overwrites = {
+            ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            ctx.guild.me: discord.PermissionOverwrite(read_messages=True),
+            ctx.author: discord.PermissionOverwrite(read_messages=True),
+            staff: discord.PermissionOverwrite(read_messages=True),
+        }
+        channel = await support_category.create_text_channel(name=ctx.author.name, overwrites=overwrites)
+        await ctx.reply(channel.mention, hidden=True)
+
+        button = [
+            create_button(
+                style=ButtonStyle.danger,
+                label="Close",
+                custom_id="close"
+            )
+        ]
+        action_row = create_actionrow(*button)
+        await channel.send(f"{ctx.author.mention} your channel has been created\n"
+                           f"Use the button below to close", components=[action_row])
+        if "mod" in ctx.custom_id:
+            await channel.send("<@&858547638719086613>")
+        if "issue" in ctx.custom_id:
+            await channel.send("<@&895186163265056778>")
+
+    if ctx.custom_id == "close":
         await ctx.edit_origin(content="Released.", components=None)
         css = """
             body {
@@ -513,7 +607,7 @@ async def on_component(ctx: ComponentContext):
             limit=None, oldest_first=True
         ).flatten()
         title = str(
-            f"Transcript of {str(ctx.channel.name).encode('ascii', 'ignore')}'s arrest"
+            f"Transcript of {str(ctx.channel.name).encode('ascii', 'ignore')}'s channel"
         )
         description = str(f"Saved by {ctx.author.display_name}")
         f = f"""
@@ -559,22 +653,22 @@ async def on_component(ctx: ComponentContext):
                 if message.attachments[0].url.endswith(("jpg", "png", "gif", "bmp")):
                     if message.content:
                         content = (
-                            check_message_mention(message)
-                            + "<br>"
-                            + f'<a href="{message.attachments[0].url}" target="_blank"><img src="{message.attachments[0].url}" width="200" alt="Attachment" \\></a>'
+                                check_message_mention(message)
+                                + "<br>"
+                                + f'<a href="{message.attachments[0].url}" target="_blank"><img src="{message.attachments[0].url}" width="200" alt="Attachment" \\></a>'
                         )
                     else:
                         content = f'<a href="{message.attachments[0].url}" target="_blank"><img src="{message.attachments[0].url}" width="200" alt="Attachment" \\></a>'
 
                 # IS A VIDEO
                 elif message.attachments[0].url.endswith(
-                    ("mp4", "ogg", "flv", "mov", "avi")
+                        ("mp4", "ogg", "flv", "mov", "avi")
                 ):
                     if message.content:
                         content = (
-                            check_message_mention(message)
-                            + "<br>"
-                            + f"""
+                                check_message_mention(message)
+                                + "<br>"
+                                + f"""
                         <video width="320" height="240" controls>
                           <source src="{message.attachments[0].url}" type="video/{message.attachments[0].url[-3:]}">
                         Your browser does not support the video.
@@ -591,9 +685,300 @@ async def on_component(ctx: ComponentContext):
                 elif message.attachments[0].url.endswith(("mp3", "boh")):
                     if message.content:
                         content = (
-                            check_message_mention(message)
-                            + "<br>"
-                            + f"""
+                                check_message_mention(message)
+                                + "<br>"
+                                + f"""
+                        <audio controls>
+                          <source src="{message.attachments[0].url}" type="audio/{message.attachments[0].url[-3:]}">
+                        Your browser does not support the audio element.
+                        </audio>
+                        """
+                        )
+                    else:
+                        content = f"""
+                        <audio controls>
+                          <source src="{message.attachments[0].url}" type="audio/{message.attachments[0].url[-3:]}">
+                        Your browser does not support the audio element.
+                        </audio>
+                        """
+                # OTHER TYPE OF FILES
+                else:
+                    # add things
+                    pass
+            else:
+                content = check_message_mention(message)
+            if message.author.bot:
+                isBot = """<span class="botTag">
+                                    <svg aria-label="Verified bot" class="botTagVerified" aria-hidden="false" width="16" height="16" viewBox="0 0 16 15.2">
+                                        <path d="M7.4,11.17,4,8.62,5,7.26l2,1.53L10.64,4l1.36,1Z" fill="currentColor"></path>
+                                     </svg>                                 
+                                    <span class="botText">BOT</span>
+                                </span>"""
+            else:
+                isBot = ""
+            f += f"""
+            <div class="message-group">
+                <div class="author-avatar-container"><img class=author-avatar src={message.author.avatar_url}></div>
+                <div class="messages">
+                    <span class="author-name" >{message.author.name}</span>{isBot}<span class="timestamp">{message.created_at.strftime("%b %d, %Y %H:%M")}</span>
+                    <div class="message">
+                        <div class="content"><span class="markdown">{content}</span></div>
+                    </div>
+                </div>
+            </div>
+            """
+        f += """
+                </div>
+            </body>
+        </html>
+        """
+        id = uuid.uuid4()
+        with open(f"transcripts/{str(id)}.html", mode="w+", encoding="utf-8") as file:
+            print(io.StringIO(f).read(), file=file)
+        await ctx.author.send(
+            f"Hi there, I've taken the liberty of sending you a copy of your transcript\n"
+            f"http://transcripts.boredman.net/{str(id)}.html")
+        await ctx.origin_message.channel.delete()
+        mod_log = bot.get_channel(897765157940396052)
+        await mod_log.send(f"{ctx.origin_message.channel.name}'s transcript:\n"
+                           f"http://transcripts.boredman.net/{str(id)}.html")
+
+    if "release" in ctx.custom_id:
+        await ctx.edit_origin(components=None)
+        css = """
+            body {
+            background-color: #36393e;
+            color: #dcddde;
+            }
+            a {
+                color: #0096cf;
+            }
+            .info {
+                display: flex;
+                max-width: 100%;
+                margin: 0 5px 10px;
+            }
+            .guild-icon-container {
+                flex: 0;
+            }
+            .guild-icon {
+                max-width: 88px;
+                max-height: 88px;
+            }
+            .metadata {
+                flex: 1;
+                margin-left: 10px;
+            }
+            .guild-name {
+                font-size: 1.4em;
+            }
+            .channel-name {
+                font-size: 1.2em;
+            }
+            .channel-topic {
+                margin-top: 2px;
+            }
+            .channel-message-count {
+                margin-top: 2px;
+            }
+            .chatlog {
+                max-width: 100%;
+                margin-bottom: 24px;
+            }
+            .message-group {
+                display: flex;
+                margin: 0 10px;
+                padding: 15px 0;
+                border-top: 1px solid;
+            }
+            .author-avatar-container {
+                flex: 0;
+                width: 40px;
+                height: 40px;
+            }
+            .author-avatar {
+                border-radius: 50%;
+                height: 40px;
+                width: 40px;
+            }
+            .messages {
+                flex: 1;
+                min-width: 50%;
+                margin-left: 20px;
+            }
+            .author-name {
+                font-size: 1em;
+                font-weight: 500;
+            }
+            .timestamp {
+                margin-left: 5px;
+                font-size: 0.75em;
+            }
+            .message {
+                padding: 2px 5px;
+                margin-right: -5px;
+                margin-left: -5px;
+                background-color: transparent;
+                transition: background-color 1s ease;
+            }
+            .content {
+                font-size: 0.9375em;
+                word-wrap: break-word;
+            }
+            .mention {
+                color: #7289da;
+            }
+            .botTag {
+                height: 0.9375rem;
+                padding: 0px 0.275rem;
+                margin-top: 0.075em;
+                border-radius: 0.1875rem;
+                background: #5961ec;
+                font-size: 0.625rem;
+                text-transform: uppercase;
+                vertical-align: top;
+                display: inline-flex;
+                align-items: center;
+                flex-shrink: 0;
+                text-indent: 0px;
+                position: relative;
+                top: 0.1rem;
+                margin-left: 0.25rem;
+                line-height: 1.375rem;
+                white-space: break-spaces;
+                overflow-wrap: break-word;
+            }
+
+            .botText {
+                position: relative;
+                font-size: 10px;
+                line-height: 15px;
+                text-transform: uppercase;
+                text-indent: 0px;
+                color: rgb(255, 255, 255);
+                font-weight: 500;
+            }
+
+        """
+        user = "boop"
+        def check_message_mention(msgs: discord.Message):
+            user_mentions: list = msgs.mentions
+            role_mentions: list = msgs.role_mentions
+            channel_mentions: list = msgs.channel_mentions
+            total_mentions: list = user_mentions + role_mentions + channel_mentions
+            m: str = msgs.content
+            for mentions in total_mentions:
+                if mentions in user_mentions:
+                    for mention in user_mentions:
+                        m = m.replace(
+                            str(f"<@{mention.id}>"),
+                            f'<span class="mention">@{mention.name}</span>',
+                        )
+                        m = m.replace(
+                            str(f"<@!{mention.id}>"),
+                            f'<span class="mention">@{mention.name}</span>',
+                        )
+                elif mentions in role_mentions:
+                    for mention in role_mentions:
+                        m = m.replace(
+                            str(f"<@&{mention.id}>"),
+                            f'<span class="mention">@{mention.name}</span>',
+                        )
+                elif mentions in channel_mentions:
+                    for mention in channel_mentions:
+                        m = m.replace(
+                            str(f"<#{mention.id}>"),
+                            f'<span class="mention">#{mention.name}</span>',
+                        )
+                else:
+                    pass
+            return m
+
+        messages: discord.TextChannel.history = await ctx.channel.history(
+            limit=None, oldest_first=True
+        ).flatten()
+        title = str(
+            f"Transcript of {str(ctx.channel.name).encode('ascii', 'ignore')}'s channel"
+        )
+        description = str(f"Saved by {ctx.author.display_name}")
+        f = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+                <meta charset=utf-8>
+                <meta name=viewport content="width=device-width">
+                <meta content="Transcript saved" property="og:title" />
+                <meta content="{str(title).replace("b'", "").replace("'", "")}
+                {description}" property="og:description"/>
+                <meta content="https://transcripts.boredman.net" property="og:url" />
+                <meta content="https://paste.boredman.net/transcripts.png" property="og:image" />
+                <meta content="#14adc4" data-react-helmet="true" name="theme-color" />
+
+                <style>
+                    {css}
+                </style>
+            </head>
+            <body>
+                <div class=info>
+                    <div class=guild-icon-container><img class=guild-icon src={ctx.guild.icon_url}></div>
+                    <div class=metadata>
+                        <div class=guild-name>{ctx.guild.name}</div>
+                        <div class=channel-name>{ctx.channel.name}'s arrest</div>
+                        <div class=channel-message-count>{len(messages)} messages</div>
+                    </div>
+                </div>
+            """
+
+        for message in messages:
+            if message.embeds:
+                content = f"""Embed:
+                Title: {message.embeds[0].title}
+
+                Description: {message.embeds[0].description}
+
+                """
+
+            elif message.attachments:
+                # IS AN IMAGE:
+                if message.attachments[0].url.endswith(("jpg", "png", "gif", "bmp")):
+                    if message.content:
+                        content = (
+                                check_message_mention(message)
+                                + "<br>"
+                                + f'<a href="{message.attachments[0].url}" target="_blank"><img src="{message.attachments[0].url}" width="200" alt="Attachment" \\></a>'
+                        )
+                    else:
+                        content = f'<a href="{message.attachments[0].url}" target="_blank"><img src="{message.attachments[0].url}" width="200" alt="Attachment" \\></a>'
+
+                # IS A VIDEO
+                elif message.attachments[0].url.endswith(
+                        ("mp4", "ogg", "flv", "mov", "avi")
+                ):
+                    if message.content:
+                        content = (
+                                check_message_mention(message)
+                                + "<br>"
+                                + f"""
+                        <video width="320" height="240" controls>
+                          <source src="{message.attachments[0].url}" type="video/{message.attachments[0].url[-3:]}">
+                        Your browser does not support the video.
+                        </video>
+                        """
+                        )
+                    else:
+                        content = f"""
+                        <video width="320" height="240" controls>
+                          <source src="{message.attachments[0].url}" type="video/{message.attachments[0].url[-3:]}">
+                        Your browser does not support the video.
+                        </video>
+                        """
+                elif message.attachments[0].url.endswith(("mp3", "boh")):
+                    if message.content:
+                        content = (
+                                check_message_mention(message)
+                                + "<br>"
+                                + f"""
                         <audio controls>
                           <source src="{message.attachments[0].url}" type="audio/{message.attachments[0].url[-3:]}">
                         Your browser does not support the audio element.
@@ -644,25 +1029,30 @@ async def on_component(ctx: ComponentContext):
 
         sentences_log = bot.get_channel(875356199174938644)
         user_from_string = int(ctx.custom_id.split("|")[1])
+        if user_from_string == 666:
+            user = None
         further_info = str(ctx.custom_id.split("|")[2])
         delete_channel = str(ctx.custom_id.split("|")[3])
-        user = discord.utils.get(ctx.guild.members, id=user_from_string)
-        user: discord.Member
-        embed = discord.Embed(title=user.name, colour=discord.colour.Color.green())
+        if user is not None:
+            user = discord.utils.get(ctx.guild.members, id=user_from_string)
+            user: discord.Member
+            embed = discord.Embed(title=user.name, colour=discord.colour.Color.green())
+            embed.add_field(
+                name="Discord account:", value=f"{user} ({user.id})", inline=True
+            )
+            embed.add_field(
+                name="Minecraft account:", value=user.display_name, inline=False
+            )
+        else:
+            embed = discord.Embed(title="Channel Released", colour=discord.colour.Color.green())
         embed.add_field(name="Moderator", value=ctx.author, inline=True)
-        embed.add_field(
-            name="Discord account:", value=f"{user} ({user.id})", inline=True
-        )
-        embed.add_field(
-            name="Minecraft account:", value=user.display_name, inline=False
-        )
         embed.add_field(
             name="Sentence:",
             value=str(ctx.selected_options)
-            .replace("[", "")
-            .replace("'", "")
-            .replace(",", "\n")
-            .replace("]", ""),
+                .replace("[", "")
+                .replace("'", "")
+                .replace(",", "\n")
+                .replace("]", ""),
             inline=True,
         )
         if further_info != "None":
@@ -677,26 +1067,33 @@ async def on_component(ctx: ComponentContext):
         )
         await sentences_log.send(embed=embed)
         staff = discord.utils.get(ctx.guild.roles, name="Staff")
-        overwrites = {
-            ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            ctx.guild.me: discord.PermissionOverwrite(read_messages=True),
-            user: discord.PermissionOverwrite(read_messages=False),
-            staff: discord.PermissionOverwrite(read_messages=True),
-        }
+        if user is not None:
+            overwrites = {
+                ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                ctx.guild.me: discord.PermissionOverwrite(read_messages=True),
+                user: discord.PermissionOverwrite(read_messages=False),
+                staff: discord.PermissionOverwrite(read_messages=True),
+            }
+        else:
+            overwrites = {
+                ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                ctx.guild.me: discord.PermissionOverwrite(read_messages=True),
+                staff: discord.PermissionOverwrite(read_messages=True),
+            }
+
         if delete_channel == "True":
             if ctx.channel.category_id == 972431466514497546:
                 await ctx.channel.delete()
         else:
             await ctx.channel.edit(overwrites=overwrites)
-            muted = discord.utils.get(ctx.guild.roles, name="Muted")
-            await user.remove_roles(muted)
-            try:
-                await user.send(
-                    f"Hi there, I've taken the liberty of sending you a copy of your arrest transcript\n"
-                    f"http://transcripts.boredman.net/{str(id)}.html"
-                )
-            except Exception:
-                print("user has DM's closed")
+            if user is not None:
+                try:
+                    await user.send(
+                        f"Hi there, I've taken the liberty of sending you a copy of your transcript\n"
+                        f"http://transcripts.boredman.net/{str(id)}.html"
+                    )
+                except Exception:
+                    print("user has DM's closed")
 
     if ctx.custom_id == "gimme-roles":
         for role in ctx.selected_options:
@@ -705,10 +1102,10 @@ async def on_component(ctx: ComponentContext):
         # This definitely looks like shit, but it works really goodly
         rolestr = (
             str(ctx.selected_options)
-            .replace(" '", "<@&")
-            .replace("',", "> ")
-            .replace("']", "> ")
-            .replace("['", "<@&")
+                .replace(" '", "<@&")
+                .replace("',", "> ")
+                .replace("']", "> ")
+                .replace("['", "<@&")
         )
         await ctx.edit_origin(
             content=f"Added you to {rolestr}", hidden=True, components=None
@@ -720,10 +1117,10 @@ async def on_component(ctx: ComponentContext):
         # This definitely looks like shit, but it works really goodly
         rolestr = (
             str(ctx.selected_options)
-            .replace(" '", "<@&")
-            .replace("',", "> ")
-            .replace("']", "> ")
-            .replace("['", "<@&")
+                .replace(" '", "<@&")
+                .replace("',", "> ")
+                .replace("']", "> ")
+                .replace("['", "<@&")
         )
         await ctx.edit_origin(
             content=f"Removed you from {rolestr}", hidden=True, components=None
@@ -733,8 +1130,8 @@ async def on_component(ctx: ComponentContext):
 @bot.event
 async def on_member_update(before, after):
     if (
-        before.guild.id == 858547359804555264
-        and before.display_name != after.display_name
+            before.guild.id == 858547359804555264
+            and before.display_name != after.display_name
     ):
         embed = discord.Embed(title=f"Changed Name")
         embed.add_field(name="User", value=before.mention)
@@ -743,6 +1140,12 @@ async def on_member_update(before, after):
         embed.set_thumbnail(url=after.avatar_url)
         channel = bot.get_channel(897765157940396052)
         await channel.send(embed=embed)
+    # assign the staff role when a corresponding role is given
+    if after.guild.id == 858547359804555264:
+        staff = discord.utils.get(after.guild.roles, name="Staff")
+        mod = discord.utils.get(after.guild.roles, name="Moderator in Training")
+        if mod in after.roles and mod not in before.roles:
+            await after.add_roles(staff, reason="Role Dependency")
 
 
 @bot.command()
@@ -767,10 +1170,10 @@ async def msg(ctx, *, member=None):
         members_messaged.append(member.display_name)
     members_messaged = (
         str(members_messaged)
-        .replace("[", "")
-        .replace("]", "")
-        .replace(",", "\n")
-        .replace("'", "")
+            .replace("[", "")
+            .replace("]", "")
+            .replace(",", "\n")
+            .replace("'", "")
     )
     await mod_log.send(
         f"The following members have been messaged about their inactivity\n{members_messaged}"
@@ -1052,14 +1455,16 @@ async def roles(ctx: SlashContext):
             create_select_option("It/its", value="866460549680332810"),
             create_select_option("Announcement gang", value="866471817450356737"),
             create_select_option("Shush the bot pings", value="920459523947364373"),
+            create_select_option("Stream Notifications", value="938618446445445140"),
+
         ],
         custom_id="gimme-roles",
         placeholder="Choose your roles",
         min_values=1,
-        max_values=8,
+        max_values=9,
     )
     await ctx.send(
-        "Role selection", components=[create_actionrow(select)], hidden=False
+        "Role selection", components=[create_actionrow(select)], hidden=True
     )
 
 
@@ -1079,6 +1484,7 @@ async def roles(ctx: SlashContext):
             create_select_option("It/its", value="866460549680332810"),
             create_select_option("Announcement gang", value="866471817450356737"),
             create_select_option("Shush the bot pings", value="920459523947364373"),
+            create_select_option("Stream Notifications", value="938618446445445140"),
         ],
         custom_id="take-me-roles",
         placeholder="Choose the roles you no longer want",
@@ -1287,22 +1693,22 @@ async def transcript(ctx):
             if message.attachments[0].url.endswith(("jpg", "png", "gif", "bmp")):
                 if message.content:
                     content = (
-                        check_message_mention(message)
-                        + "<br>"
-                        + f'<a href="{message.attachments[0].url}" target="_blank"><img src="{message.attachments[0].url}" width="200" alt="Attachment" \\></a>'
+                            check_message_mention(message)
+                            + "<br>"
+                            + f'<a href="{message.attachments[0].url}" target="_blank"><img src="{message.attachments[0].url}" width="200" alt="Attachment" \\></a>'
                     )
                 else:
                     content = f'<a href="{message.attachments[0].url}" target="_blank"><img src="{message.attachments[0].url}" width="200" alt="Attachment" \\></a>'
 
             # IS A VIDEO
             elif message.attachments[0].url.endswith(
-                ("mp4", "ogg", "flv", "mov", "avi")
+                    ("mp4", "ogg", "flv", "mov", "avi")
             ):
                 if message.content:
                     content = (
-                        check_message_mention(message)
-                        + "<br>"
-                        + f"""
+                            check_message_mention(message)
+                            + "<br>"
+                            + f"""
                     <video width="320" height="240" controls>
                       <source src="{message.attachments[0].url}" type="video/{message.attachments[0].url[-3:]}">
                     Your browser does not support the video.
@@ -1319,9 +1725,9 @@ async def transcript(ctx):
             elif message.attachments[0].url.endswith(("mp3", "boh")):
                 if message.content:
                     content = (
-                        check_message_mention(message)
-                        + "<br>"
-                        + f"""
+                            check_message_mention(message)
+                            + "<br>"
+                            + f"""
                     <audio controls>
                       <source src="{message.attachments[0].url}" type="audio/{message.attachments[0].url[-3:]}">
                     Your browser does not support the audio element.
@@ -1473,12 +1879,21 @@ async def banner(ctx, member: discord.Member = None):
 @bot.event
 async def on_message(message):
     message: discord.Message
+    # Auto redaction
+    naughty_peeps = ["shouga", "shougga", "shougaa", "chyum", "tnl"]
+    for peep in naughty_peeps:
+        if peep in message.content.lower():
+            await message.delete()
+            await message.channel.send("Please refer to them as [REDACTED] from here on.\n"
+                                       "Press CTRL+Z to edit your sent message and redact it", delete_after=5)
+
     # Server showcase
     if not message.author == bot.user:
         if message.channel.id == 973448980996440105:
             if not message.attachments:
                 await message.delete()
-                await message.channel.send(f"Heyo {message.author.mention}, please only post images here", delete_after=10)
+                await message.channel.send(f"Heyo {message.author.mention}, please only post images here",
+                                           delete_after=10)
 
     # Auto reacts
     if "plugin" in message.content.lower():
@@ -1493,6 +1908,8 @@ async def on_message(message):
         await message.add_reaction("<:orengesad:955476237726416916>")
     if "vanilla" in message.content.lower():
         await message.add_reaction("🍦")
+    if "rat" in message.content.lower():
+        await message.add_reaction("🐀")
 
     if "when is the bot going to be finished?" in message.content:
         await message.channel.send("<t:9999999999:R>")
@@ -1524,7 +1941,7 @@ async def on_message(message):
             webhook = Webhook.from_url(
                 config("LOG"), adapter=AsyncWebhookAdapter(session)
             )
-            content = message.content.replace("324504908013240330", "BoredManPing")
+            content = message.content.replace("324504908013240330", "BoredManPing").replace("@everyone", "EveryonePing")
             await webhook.send(
                 f"<#{message.channel.id}> {message.author.display_name} ({message.author.id}) sent: {content}",
                 username=message.author.display_name,
@@ -1533,20 +1950,15 @@ async def on_message(message):
     if message.author == bot.user:  # Don't listen to yourself
         return
     if (
-        "https://discord.gift/" in message.content.lower()
-    ):  # Some dumbass sent free nitro
-        await message.channel.send(
-            ":warning: FREE NITRO! :warning:\nThis link appears to be legitimate :D"
-        )
-        return
-    if (
-        not message.guild and message.author != bot.user
+            not message.guild and message.author != bot.user
     ):  # If message not in a guild it must be a DM
+        if len(message.content) == 4 and message.content.isdigit():
+            await message.reply("That seems like a linking code, DM <@967658758471811122> instead")
         message_filtered = (
             str(message.content)
-            .replace("www", "")
-            .replace("http", "")
-            .replace("@everyone", "ATTEMPTED EVERONE PING")
+                .replace("www", "")
+                .replace("http", "")
+                .replace("@everyone", "ping pong")
         )  # No links pls
         url = "https://neutrinoapi.net/bad-word-filter"  # Filter out bad boy words
         params = {
@@ -1569,27 +1981,6 @@ async def on_message(message):
                 username=f"{message.author.display_name} in DM",
                 avatar_url=message.author.avatar_url,
             )
-    if str(bot.user.id) in message.content:
-        reactions = [
-            "<:iseeyou:876201272972304425>",
-            "🇨",
-            "🇦",
-            "🇳",
-            "▪️",
-            "🇮",
-            "◼️",
-            "🇭",
-            "🇪",
-            "🇱",
-            "��",
-            "⬛",
-            "🇾",
-            "🇴",
-            "🇺",
-            "❓",
-        ]
-        for reaction in reactions:
-            await message.add_reaction(reaction)
     await bot.process_commands(message)  # Continue processing bot.commands
 
 
@@ -1613,19 +2004,19 @@ async def list(ctx: SlashContext, role: discord.Role):
         count += 1
     check_len = (
         str(sorted(usernames, key=str.lower))
-        .replace(",", "\n")
-        .replace("[", "")
-        .replace("]", "")
-        .replace("'", "")
+            .replace(",", "\n")
+            .replace("[", "")
+            .replace("]", "")
+            .replace("'", "")
     )
     if len(check_len) > 2000:  # Ensure we don't go over the Discord embed limit
         title = f"**{count} members with the {role.name} role**"
         description = (
             str(sorted(usernames, key=str.lower))
-            .replace(", ", "\n")
-            .replace("[", "")
-            .replace("]", "")
-            .replace("'", "")
+                .replace(", ", "\n")
+                .replace("[", "")
+                .replace("]", "")
+                .replace("'", "")
         )
         await ctx.send(
             f"{title}\n{description}\n\n`List too long to be sent as an embed`"
@@ -1635,10 +2026,10 @@ async def list(ctx: SlashContext, role: discord.Role):
         title = f"**{count} members with the {role.mention} role**"
         description = (
             str(sorted(usernames, key=str.lower))
-            .replace(", ", "\n")
-            .replace("[", "")
-            .replace("]", "")
-            .replace("'", "")
+                .replace(", ", "\n")
+                .replace("[", "")
+                .replace("]", "")
+                .replace("'", "")
         )
         embed = discord.Embed(description=f"{title}\n{description}", color=role.color)
         embed.set_footer(
@@ -1755,15 +2146,14 @@ async def welcomemsg(ctx):
 
                     You can grab some self roles over in <#861288424640348160>.
 
-                    The IP is in <#858549386962272296>: you don't have to read the entirety of that as it is a tad outdated and due a complete rewrite... it still can give you a rough idea of where we are coming from and can give you an idea of your rights as a Prismian.
+                    The IP is in <#861317568807829535>
 
                     Ask in <#869280855657447445> to get yourself whitelisted.
 
                     Have fun!
 
                     __Rules__
-                    ```Note: 
-                    Use common sense and don't be a douche. There is more to "rules" than those written here. This is not meant as an exhaustive list. Listen to the staff```
+                    ```Note: Use common sense and don't be a douche. There is more to "rules" than those written here. This is not meant as an exhaustive list. Listen to the staff```
 
                     **1) Social**
                     1.1 Follow the [Discord ToS](https://discord.com/terms).
@@ -1786,7 +2176,7 @@ async def welcomemsg(ctx):
 
                     3.2 No building at less than 500 blocks from spawn (~x280 z230). The area around spawn is dedicated to community builds such as the Shopping District and the Mini-games District. Anything built there prior to this rule is safe to stay as long as their owners are Prism members.
 
-                    3.3 For Shopping District rules, see the pinned message in 🎙︱survival-adverts 
+                    3.3 For Shopping District rules, see the pinned message in <#877310816142127114> 
 
                     3.4 Mega-projects are to be validated by staff: if you plan a build spanning more than 50 chunks please contact staff for approval prior to start building.
 
@@ -1833,8 +2223,8 @@ async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
         differ_output = differ.compare(old, new)
         changes = (
             "{0}".format("".join(differ_output))
-            .replace("<a:tick:757490995720880159>", "✅")
-            .replace("<@!890176674237399040>", "Prism Bot")
+                .replace("<a:tick:757490995720880159>", "✅")
+                .replace("<@!890176674237399040>", "Prism Bot")
         )
         embed = discord.Embed(
             title="Changelog changed",
@@ -1848,7 +2238,7 @@ async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
 @bot.event
 async def on_member_join(member):
     if (
-        member.guild.id == 858547359804555264
+            member.guild.id == 858547359804555264
     ):  # Only detect if the user joined the Prism guild
         if member.bot:  # Bloody bots
             return
@@ -1904,76 +2294,12 @@ async def on_member_join(member):
                 f"Hey `@everyone` {member.name} joined Prism\nIf you need anything from staff or simply have questions, ping a <@&858547638719086613>",
             ]
             await channel.send(random.choice(messages))
-            req = PreparedRequest()
-            users = await bot.http.request(
-                discord.http.Route("GET", f"/users/{member.id}")
-            )
-            banner_id = users["banner"]
-            # If statement because the user may not have a banner
-            member_count = len([m for m in member.guild.members if not m.bot])
-            if not str(banner_id) == "None":
-                banner_url = f"https://cdn.discordapp.com/banners/{member.id}/{banner_id}?size=1024"
-                req.prepare_url(
-                    url="https://api.xzusfin.repl.co/card?",
-                    params={
-                        "avatar": str(member.avatar_url_as(format="png")),
-                        "middle": f"{member.name} joined Prism",
-                        "name": "We now have",
-                        "bottom": f"{member_count} members",
-                        "text": discord.colour.Color.random(),
-                        "avatarborder": discord.colour.Color.random(),
-                        "avatarbackground": discord.colour.Color.random(),
-                        "background": banner_url,
-                    },
-                )
-                body = dict(parse_qsl(req.body))
-                if "code" in body:
-                    print("Not sending a banner due to invalid response")
-                    print(body)
-                    print(req.url)
-                else:
-                    img_data = requests.get(req.url).content
-                    with open("Banner.png", "wb") as handler:
-                        handler.write(img_data)
-                    try:
-                        Image.open("Banner.png")
-                        await channel.send(file=discord.File("Banner.png"))
-                    except IOError:
-                        logger.error("Banner was not a valid image")
-            else:
-                req.prepare_url(
-                    url="https://api.xzusfin.repl.co/card?",
-                    params={
-                        "avatar": str(member.avatar_url_as(format="png")),
-                        "middle": f"{member.name} joined Prism",
-                        "name": "We now have",
-                        "bottom": f"{member_count} members",
-                        "text": discord.colour.Color.random(),
-                        "avatarborder": discord.colour.Color.random(),
-                        "avatarbackground": discord.colour.Color.random(),
-                        "background": "https://cdnb.artstation.com/p/assets/images/images/013/535/601/large/supawit-oat-fin1.jpg",
-                    },
-                )
-                body = dict(parse_qsl(req.body))
-                if "code" in body:
-                    print("Not sending a banner due to invalid response")
-                    print(body)
-                    print(req.url)
-                else:
-                    img_data = requests.get(req.url).content
-                    with open("Banner.png", "wb") as handler:
-                        handler.write(img_data)
-                    try:
-                        Image.open("Banner.png")
-                        await channel.send(file=discord.File("Banner.png"))
-                    except IOError:
-                        logger.error("Banner was not a valid image")
 
 
 @bot.event
 async def on_member_remove(member):
     if (
-        member.guild.id == 858547359804555264
+            member.guild.id == 858547359804555264
     ):  # Only detect if the user left the Prism guild
         if member.bot:
             return
@@ -2081,14 +2407,14 @@ async def lp(ctx, *, message):
 )
 @check(has_perms)
 async def embed(
-    ctx: SlashContext,
-    *,
-    title=None,
-    description=None,
-    image=None,
-    thumbnail=None,
-    footer=None,
-    channel: discord.TextChannel,
+        ctx: SlashContext,
+        *,
+        title=None,
+        description=None,
+        image=None,
+        thumbnail=None,
+        footer=None,
+        channel: discord.TextChannel,
 ):
     if title is None:
         title = ""
@@ -2150,7 +2476,7 @@ async def whitelist(ctx, member: discord.Member):
     )
     embed.set_author(name="📋 User added to whitelist")
     await channel.send(embed=embed)
-    await ctx.send("Done!", hidden=True)
+
 
 
 @slash.slash(
@@ -2198,14 +2524,14 @@ async def whitelist(ctx, member: discord.Member):
 )
 @check(has_perms)
 async def embed(
-    ctx: SlashContext,
-    *,
-    embedlink,
-    title=None,
-    description=None,
-    image=None,
-    thumbnail=None,
-    footer=None,
+        ctx: SlashContext,
+        *,
+        embedlink,
+        title=None,
+        description=None,
+        image=None,
+        thumbnail=None,
+        footer=None,
 ):
     if title is None:
         title = ""
@@ -2225,8 +2551,8 @@ async def embed(
     editembed = embedlink.split("/")
     message = (
         await bot.get_guild(int(editembed[-3]))
-        .get_channel(int(editembed[-2]))
-        .fetch_message(int(editembed[-1]))
+            .get_channel(int(editembed[-2]))
+            .fetch_message(int(editembed[-1]))
     )
     await message.edit(embed=newembed)
 
@@ -2255,41 +2581,41 @@ def timeformat(secs):
     )
     minutes = int(
         (
-            secs
-            - years * dyears
-            - month * dmonth
-            - weeks * dweeks
-            - days * ddays
-            - hours * dhours
+                secs
+                - years * dyears
+                - month * dmonth
+                - weeks * dweeks
+                - days * ddays
+                - hours * dhours
         )
         // dmins
     )
     seconds = int(
         (
-            secs
-            - years * dyears
-            - month * dmonth
-            - weeks * dweeks
-            - days * ddays
-            - hours * dhours
-            - minutes * dmins
+                secs
+                - years * dyears
+                - month * dmonth
+                - weeks * dweeks
+                - days * ddays
+                - hours * dhours
+                - minutes * dmins
         )
         // 1
     )
     milliseconds = float(
         round(
             (
-                (
-                    secs
-                    - years * dyears
-                    - month * dmonth
-                    - weeks * dweeks
-                    - days * ddays
-                    - hours * dhours
-                    - minutes * dmins
-                    - seconds
-                )
-                * 1000
+                    (
+                            secs
+                            - years * dyears
+                            - month * dmonth
+                            - weeks * dweeks
+                            - days * ddays
+                            - hours * dhours
+                            - minutes * dmins
+                            - seconds
+                    )
+                    * 1000
             ),
             3,
         )
@@ -2492,25 +2818,25 @@ async def _help(ctx: discord.ext.commands.Context):
     help_embed.add_field(
         name="role-expire",
         value=f"_Sets a role to expire after a certain amount of time_\n\n"
-        f"`/role-expire <role> <time>`\n(eg, /role-expire @examplerole 1m 12s)",
+              f"`/role-expire <role> <time>`\n(eg, /role-expire @examplerole 1m 12s)",
         inline=False,
     )
     help_embed.add_field(
         name="role-unexpire",
         value=f"_Removes a role from the list of expiring roles_\n\n"
-        f"`/role-unexpire <role>`\n(eg, /role-unexpire @examplerole2)",
+              f"`/role-unexpire <role>`\n(eg, /role-unexpire @examplerole2)",
         inline=False,
     )
     help_embed.add_field(
         name="AddPerm",
         value=f"_Gives a role permissions to use this bot."
-        f" You need to have `Manage Roles` Permissions to use this command._\n\n`/addperm <role>`",
+              f" You need to have `Manage Roles` Permissions to use this command._\n\n`/addperm <role>`",
         inline=False,
     )
     help_embed.add_field(
         name="DelPerm",
         value=f"_Removes a role's permission to use this bot."
-        f" You need to have `Manage Roles` Permissions to use this command._\n\n`/delperm <role>`",
+              f" You need to have `Manage Roles` Permissions to use this command._\n\n`/delperm <role>`",
         inline=False,
     )
     help_embed.add_field(
@@ -2543,25 +2869,25 @@ async def _help(ctx: discord.ext.commands.Context):
     help_embed.add_field(
         name="Expire",
         value=f"_Sets a role to expire after a certain amount of time_\n\n"
-        f"`$expire <role> <time>`\n(eg, $expire @examplerole 1m 12s)",
+              f"`$expire <role> <time>`\n(eg, $expire @examplerole 1m 12s)",
         inline=False,
     )
     help_embed.add_field(
         name="Unexpire",
         value=f"_Removes a role from the list of expiring roles_\n\n"
-        f"`$unexpire <role>`\n(eg, $unexpire @examplerole2)",
+              f"`$unexpire <role>`\n(eg, $unexpire @examplerole2)",
         inline=False,
     )
     help_embed.add_field(
         name="AddPerm",
         value=f"_Gives a role permissions to use this bot."
-        f" You need to have `Manage Roles` Permissions to use this command._\n\n`$addperm <role>`",
+              f" You need to have `Manage Roles` Permissions to use this command._\n\n`$addperm <role>`",
         inline=False,
     )
     help_embed.add_field(
         name="DelPerm",
         value=f"_Removes a role's permission to use this bot."
-        f" You need to have `Manage Roles` Permissions to use this command._\n\n`$delperm <role>`",
+              f" You need to have `Manage Roles` Permissions to use this command._\n\n`$delperm <role>`",
         inline=False,
     )
     help_embed.add_field(
@@ -2789,7 +3115,7 @@ async def context_menu(ctx: MenuContext):
     if str(user.id) == "709089341007200288":  # FT :POGGERS:
         embed.set_thumbnail(
             url="https://cdn.discordapp.com/attachments/861289278374150164/917731281503150090/"
-            "3ee9a6c54e15a2929d276cd9ba366442.gif"
+                "3ee9a6c54e15a2929d276cd9ba366442.gif"
         )
     elif str(user.id) == "510748531926106113":  # Orang
         embed.set_thumbnail(
@@ -2804,7 +3130,7 @@ async def context_menu(ctx: MenuContext):
     elif str(user.id) == "324504908013240330":  # ME!!!!!!!!111!!
         embed.set_thumbnail(
             url="https://64.media.tumblr.com/e12f4de9050b40e88d76d396bd848c08/"
-            "tumblr_oi94oaK9Wl1rcqnnxo1_r1_400.gifv"
+                "tumblr_oi94oaK9Wl1rcqnnxo1_r1_400.gifv"
         )
     else:
         embed.set_thumbnail(url=user.avatar_url)
@@ -2912,7 +3238,7 @@ async def whois(ctx: Context, *, user: discord.Member = None):
     if str(user.id) == "709089341007200288":  # FT :POGGERS:
         embed.set_thumbnail(
             url="https://cdn.discordapp.com/attachments/861289278374150164/917731281503150090/"
-            "3ee9a6c54e15a2929d276cd9ba366442.gif"
+                "3ee9a6c54e15a2929d276cd9ba366442.gif"
         )
     elif str(user.id) == "510748531926106113":  # Orang
         embed.set_thumbnail(
@@ -2927,7 +3253,7 @@ async def whois(ctx: Context, *, user: discord.Member = None):
     elif str(user.id) == "324504908013240330":  # ME!!!!!!!!111!!
         embed.set_thumbnail(
             url="https://64.media.tumblr.com/e12f4de9050b40e88d76d396bd848c08/"
-            "tumblr_oi94oaK9Wl1rcqnnxo1_r1_400.gifv"
+                "tumblr_oi94oaK9Wl1rcqnnxo1_r1_400.gifv"
         )
     else:
         embed.set_thumbnail(url=user.avatar_url)
@@ -3238,7 +3564,7 @@ async def whois(ctx, *, user: discord.Member = None):
     if str(user.id) == "709089341007200288":  # FT :POGGERS:
         embed.set_thumbnail(
             url="https://cdn.discordapp.com/attachments/861289278374150164/917731281503150090/"
-            "3ee9a6c54e15a2929d276cd9ba366442.gif"
+                "3ee9a6c54e15a2929d276cd9ba366442.gif"
         )
     elif str(user.id) == "510748531926106113":  # Orang
         embed.set_thumbnail(
@@ -3253,7 +3579,7 @@ async def whois(ctx, *, user: discord.Member = None):
     elif str(user.id) == "324504908013240330":  # ME!!!!!!!!111!!
         embed.set_thumbnail(
             url="https://64.media.tumblr.com/e12f4de9050b40e88d76d396bd848c08/"
-            "tumblr_oi94oaK9Wl1rcqnnxo1_r1_400.gifv"
+                "tumblr_oi94oaK9Wl1rcqnnxo1_r1_400.gifv"
         )
     else:
         embed.set_thumbnail(url=user.avatar_url)
@@ -3385,7 +3711,7 @@ async def auth(ctx, message):
     if config("yubi_key") in message:
         if nonce in page.text:
             if "status=OK" in page.text:
-                await ctx.message.add_reaction("🔓")
+                await ctx.message.add_reaction("  ")
                 log = f'<p class="white">Authenticated'
 
                 with open("messages.log", "a", encoding="utf8") as text_file:
@@ -3409,6 +3735,53 @@ async def auth(ctx, message):
             await ctx.send("Something funky is going on")
     else:
         await ctx.send("Something funky is going on")
+
+
+# interview system
+@slash.slash(
+    name="interview",
+    guild_ids=bot.guild_ids,
+    description="Interview a member",
+    options=[
+        create_option(
+            name="user",
+            description="The user to interview",
+            option_type=option_type["user"],
+            required=True,
+        )
+    ],
+)
+@check(has_perms)
+async def interview(ctx: SlashContext, user):
+    mod_log = bot.get_channel(897765157940396052)
+    category_name = "👮 Police Station"
+    category = discord.utils.get(ctx.guild.categories, name=category_name)
+    staff = discord.utils.get(ctx.guild.roles, name="Staff")
+    overwrites = {
+        ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        ctx.guild.me: discord.PermissionOverwrite(read_messages=True),
+        user: discord.PermissionOverwrite(read_messages=True),
+        staff: discord.PermissionOverwrite(read_messages=True),
+    }
+    if category is None:
+        category = await ctx.guild.create_category(
+            category_name, overwrites=None, reason=None
+        )
+    channel = await ctx.guild.create_text_channel(
+        str(user.display_name), overwrites=overwrites, reason=None, category=category
+    )
+    await ctx.send(
+        f"{channel.mention}",
+        hidden=True,
+    )
+    await channel.send(
+        f"{user.mention} you have been requested for an interview\nPlease stand-by"
+        # f"```You do not have to say anything. But, it may harm your defence if you do not mention"
+        # f" when questioned something which you later rely on in court. "
+        # f"Anything you do say may be given in evidence. "
+        # f"You have the right to have a lawyer present both during questioning and during court"
+        # f" proceedings.```"
+    )
 
 
 @slash.slash(
@@ -3481,7 +3854,7 @@ async def arrest(ctx: SlashContext, user, reason):
             name="user",
             description="The user to release",
             option_type=option_type["user"],
-            required=True,
+            required=False,
         ),
         create_option(
             name="further_info",
@@ -3498,20 +3871,36 @@ async def arrest(ctx: SlashContext, user, reason):
     ],
 )
 @check(has_perms)
-async def release(ctx: SlashContext, user, further_info=None, delete_channel=False):
-    select = create_select(
-        options=[
-            create_select_option("No punishment", value="No punishment"),
-            create_select_option("Warning", value="Warning"),
-            create_select_option("Temp ban", value="Temp ban"),
-            create_select_option("Perma ban", value="Perma ban"),
-            create_select_option("Mute", value="Mute"),
-        ],
-        custom_id=f"release|{user.id}|{str(further_info)}|{str(delete_channel)}",
-        placeholder="Select a punishment",
-        min_values=1,
-        max_values=4,
-    )
+async def release(ctx: SlashContext, user=None, further_info=None, delete_channel=False):
+    if user is not None:
+        select = create_select(
+            options=[
+                create_select_option("No punishment", value="No punishment"),
+                create_select_option("Warning", value="Warning"),
+                create_select_option("Temp ban", value="Temp ban"),
+                create_select_option("Perma ban", value="Perma ban"),
+                create_select_option("Mute", value="Mute"),
+            ],
+            custom_id=f"release|{user.id}|{str(further_info)}|{str(delete_channel)}",
+            placeholder="Select a punishment",
+            min_values=1,
+            max_values=4,
+        )
+    else:
+        select = create_select(
+            options=[
+                create_select_option("No punishment", value="No punishment"),
+                create_select_option("Warning", value="Warning"),
+                create_select_option("Temp ban", value="Temp ban"),
+                create_select_option("Perma ban", value="Perma ban"),
+                create_select_option("Mute", value="Mute"),
+            ],
+            custom_id=f"release|666|{str(further_info)}|{str(delete_channel)}",
+            placeholder="Select a punishment",
+            min_values=1,
+            max_values=4,
+        )
+
     await ctx.send("Punishments", components=[create_actionrow(select)], hidden=True)
 
 

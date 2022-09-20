@@ -181,14 +181,14 @@ async def on_ready():
             nick="prism bot testing be his job"
         )
         bot.debug_status = "debug"
-    print(f"╔═══════════════════════════════════════════════════")
-    print(f"╠Bot is ready")
-    print(f"╠{bot.user.name} running in {bot.debug_status} mode")
-    print(f"╠Discord API Version: {discord.__version__}")
-    print(f"╠═Guilds:")
+    print(f"â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•")
+    print(f"â• Bot is ready")
+    print(f"â• {bot.user.name} running in {bot.debug_status} mode")
+    print(f"â• Discord API Version: {discord.__version__}")
+    print(f"â• â•Guilds:")
     for guild in bot.guilds:  # Print list of current guildsPreparedRequest
-        print(f"╠════{guild.name} ({guild.id})")
-    print(f"╚═══════════════════════════════════════════════════")
+        print(f"â• â•â•â•â•{guild.name} ({guild.id})")
+    print(f"â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•")
     prismian.start()
     changelog.start()
     website_loop.start()
@@ -1907,9 +1907,9 @@ async def on_message(message):
     if "orenge" in message.content.lower():
         await message.add_reaction("<:orengesad:955476237726416916>")
     if "vanilla" in message.content.lower():
-        await message.add_reaction("🍦")
+        await message.add_reaction("ðŸ¦")
     if "rat" in message.content.lower():
-        await message.add_reaction("🐀")
+        await message.add_reaction("ðŸ€")
 
     if "when is the bot going to be finished?" in message.content:
         await message.channel.send("<t:9999999999:R>")
@@ -1965,7 +1965,7 @@ async def on_message(message):
             "user-id": config("NaughtyBoy_user"),
             "api-key": config("NaughtyBoy_key"),
             "content": message_filtered,
-            "censor-character": "•",
+            "censor-character": "â€¢",
             "catalog": "strict",
         }
         postdata = parse.urlencode(params).encode()
@@ -2223,7 +2223,7 @@ async def on_raw_message_edit(payload: discord.RawMessageUpdateEvent):
         differ_output = differ.compare(old, new)
         changes = (
             "{0}".format("".join(differ_output))
-                .replace("<a:tick:757490995720880159>", "✅")
+                .replace("<a:tick:757490995720880159>", "âœ…")
                 .replace("<@!890176674237399040>", "Prism Bot")
         )
         embed = discord.Embed(
@@ -2314,7 +2314,7 @@ async def on_member_remove(member):
                 f"{member.name} left\nSee you later alligator",
                 f"{member.name} left\nBye Felicia",
                 f"{member.name} left\nSo long, and thanks for all the fish!",
-                f"{member.name} left\nGoodbye, Vietnam! That’s right, I’m history, I’m outta here",
+                f"{member.name} left\nGoodbye, Vietnam! Thatâ€™s right, Iâ€™m history, Iâ€™m outta here",
             ]
             general = bot.get_channel(858547359804555267)
             await general.send(random.choice(messages))
@@ -2453,7 +2453,7 @@ async def whitelist(ctx: SlashContext, member: discord.Member):
     embed.set_footer(
         text=f"Whitelisted by {ctx.author.display_name}", icon_url=ctx.author.avatar_url
     )
-    embed.set_author(name="📋 User added to whitelist")
+    embed.set_author(name="ðŸ“‹ User added to whitelist")
     await ctx.send(embed=embed)
 
 
@@ -2474,7 +2474,7 @@ async def whitelist(ctx, member: discord.Member):
     embed.set_footer(
         text=f"Whitelisted by {ctx.author.display_name}", icon_url=ctx.author.avatar_url
     )
-    embed.set_author(name="📋 User added to whitelist")
+    embed.set_author(name="ðŸ“‹ User added to whitelist")
     await channel.send(embed=embed)
 
 
@@ -2723,7 +2723,7 @@ async def expire(ctx: Context, role: discord.Role, *, time: str):
         roles_json_data[t] = []
     jsondump(roles_json_data)
     await ctx.send(
-        f"✓ set {role.name} to expire {str(Duration(time)).replace('<Duration ', 'after ').replace('>', '')}"
+        f"âœ“ set {role.name} to expire {str(Duration(time)).replace('<Duration ', 'after ').replace('>', '')}"
     )
 
 
@@ -2759,7 +2759,7 @@ async def expire(ctx: Context, role: discord.Role, *, time: str):
         roles_json_data["roles"].append([t, expire_duration])
         roles_json_data[t] = []
     jsondump(roles_json_data)
-    await ctx.message.add_reaction("✓")
+    await ctx.message.add_reaction("âœ“")
 
 
 @slash.slash(
@@ -2787,7 +2787,7 @@ async def unexpire(ctx, role: discord.Role):
             del roles_json_data[str(role.id)]
             del RJD[str(role.id)]
     jsondump(roles_json_data)
-    await ctx.send(f"✓ set {role.name} to not expire")
+    await ctx.send(f"âœ“ set {role.name} to not expire")
 
 
 @bot.command(description="Removes a role from expiration", category="Moderation")
@@ -2803,7 +2803,7 @@ async def unexpire(ctx, role: discord.Role):
             del roles_json_data[str(role.id)]
             del RJD[str(role.id)]
     jsondump(roles_json_data)
-    await ctx.message.add_reaction("✓")
+    await ctx.message.add_reaction("âœ“")
 
 
 @slash.slash(
@@ -2928,7 +2928,7 @@ async def addperm(ctx: Context, role: discord.Role):
         roles_json.seek(0)
         y["perms"].append(r)
         jsondump(y)
-        await ctx.send(f"✓ added {role.name} to the management team")
+        await ctx.send(f"âœ“ added {role.name} to the management team")
     else:
         await ctx.send("That role already has permissions!")
 
@@ -2945,7 +2945,7 @@ async def addperm(ctx: Context, role: discord.Role):
         roles_json.seek(0)
         y["perms"].append(r)
         jsondump(y)
-        await ctx.send(f"✓ added {role.name} to the management team")
+        await ctx.send(f"âœ“ added {role.name} to the management team")
     else:
         await ctx.send("That role already has permissions!")
 
@@ -2972,7 +2972,7 @@ async def delperm(ctx: Context, role: discord.Role):
         roles_json.seek(0)
         y["perms"].remove(r)
         jsondump(y)
-        await ctx.send(f"✓ removed {role.name} from the management role")
+        await ctx.send(f"âœ“ removed {role.name} from the management role")
     else:
         await ctx.send("I don't think that role had permissions :confused:")
 
@@ -2987,7 +2987,7 @@ async def delperm(ctx: Context, role: discord.Role):
         roles_json.seek(0)
         y["perms"].remove(r)
         jsondump(y)
-        await ctx.send(f"✓ removed {role.name} from the management role")
+        await ctx.send(f"âœ“ removed {role.name} from the management role")
     else:
         await ctx.send("I don't think that role had permissions :confused:")
 
@@ -3717,12 +3717,12 @@ async def auth(ctx, message):
                 with open("messages.log", "a", encoding="utf8") as text_file:
                     print(log, file=text_file)
             elif "status=REPLAYED_REQUEST" in page.text:
-                await ctx.message.add_reaction("❌")
+                await ctx.message.add_reaction("âŒ")
                 log = f'<p class="white">Replayed OTP'
                 with open("messages.log", "a", encoding="utf8") as text_file:
                     print(log, file=text_file)
             elif "status=BAD_OTP" in page.text:
-                await ctx.message.add_reaction("❌")
+                await ctx.message.add_reaction("âŒ")
                 log = f'<p class="white">OTP was invalid'
                 with open("messages.log", "a", encoding="utf8") as text_file:
                     print(log, file=text_file)
@@ -3754,7 +3754,7 @@ async def auth(ctx, message):
 @check(has_perms)
 async def interview(ctx: SlashContext, user):
     mod_log = bot.get_channel(897765157940396052)
-    category_name = "👮 Police Station"
+    category_name = "ðŸ‘® Police Station"
     category = discord.utils.get(ctx.guild.categories, name=category_name)
     staff = discord.utils.get(ctx.guild.roles, name="Staff")
     overwrites = {
@@ -3810,7 +3810,7 @@ async def arrest(ctx: SlashContext, user, reason):
         hidden=True,
     )
     mod_log = bot.get_channel(897765157940396052)
-    category_name = "👮 Police Station"
+    category_name = "ðŸ‘® Police Station"
     category = discord.utils.get(ctx.guild.categories, name=category_name)
     staff = discord.utils.get(ctx.guild.roles, name="Staff")
     overwrites = {
